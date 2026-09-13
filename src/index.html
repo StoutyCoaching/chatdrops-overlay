@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Kick Stream Overlay</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="icon-head" viewBox="0 0 24 24">
+        <circle cx="12" cy="7" r="4"/>
+        <path d="M4 20a8 8 0 0 1 16 0z"/>
+      </symbol>
+      <symbol id="icon-drop" viewBox="0 0 24 24">
+        <path d="M12 2C8 8 5 11.5 5 15a7 7 0 0 0 14 0c0-3.5-3-7-7-13z"/>
+      </symbol>
+      <symbol id="icon-eye" viewBox="0 0 24 24">
+        <path d="M12 5C7 5 3 9 1 12c2 3 6 7 11 7s9-4 11-7c-2-3-6-7-11-7zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/>
+      </symbol>
+      <symbol id="icon-badge-broadcaster" viewBox="0 0 24 24">
+        <path d="M3 8l4.5 3L12 4l4.5 7L21 8l-2 10H5L3 8z"/>
+      </symbol>
+      <symbol id="icon-badge-moderator" viewBox="0 0 24 24">
+        <path d="M12 2 4 5v6c0 5.25 3.75 9.5 8 11 4.25-1.5 8-5.75 8-11V5l-8-3z"/>
+      </symbol>
+      <symbol id="icon-badge-vip" viewBox="0 0 24 24">
+        <path d="M7 3h10l4 6-9 12L3 9l4-6z"/>
+      </symbol>
+      <symbol id="icon-badge-og" viewBox="0 0 24 24">
+        <path d="M12 2l2.9 6.9 7.5.6-5.7 5 1.7 7.3L12 17.8 5.6 21.8l1.7-7.3-5.7-5 7.5-.6z"/>
+      </symbol>
+      <symbol id="icon-badge-founder" viewBox="0 0 24 24">
+        <path d="M7 4h10v3a5 5 0 0 1-4 4.9V14h2v2H9v-2h2v-2.1A5 5 0 0 1 7 7V4zM4 5h3v3a5 5 0 0 1-3-3zm16 0v3a5 5 0 0 1-3 3V5h3z"/>
+      </symbol>
+      <symbol id="icon-badge-subscriber" viewBox="0 0 24 24">
+        <path d="M12 21s-7-4.5-9.5-9C.5 8 2 4 5.5 4 8 4 12 7 12 7s4-3 6.5-3C22 4 23.5 8 21.5 12 19 16.5 12 21 12 21z"/>
+      </symbol>
+      <symbol id="icon-badge-verified" viewBox="0 0 24 24">
+        <path d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2zm-1.2 14.6-4-4 1.4-1.4 2.6 2.6 6-6 1.4 1.4-7.4 7.4z"/>
+      </symbol>
+      <symbol id="icon-mic" viewBox="0 0 24 24">
+        <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/>
+        <path d="M19 12a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V23h2v-2.06A9 9 0 0 0 21 12h-2z"/>
+      </symbol>
+      <symbol id="icon-speaker" viewBox="0 0 24 24">
+        <path d="M3 9v6h4l5 5V4L7 9H3z"/>
+        <path d="M16 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M18.5 5.5a9 9 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="icon-camera" viewBox="0 0 24 24">
+        <path fill-rule="evenodd" clip-rule="evenodd" d="M9 5a1 1 0 0 0-.8.4L6.8 7H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-2.8l-1.4-1.6A1 1 0 0 0 15 5H9zm3 5.3a3.3 3.3 0 1 1 0 6.6 3.3 3.3 0 0 1 0-6.6z"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div id="drag-strip">
+    <span id="drag-status">
+      <span id="clock-time"></span>
+      <span id="startup-loading" class="startup-loading hidden">
+        <span class="drag-sep">&middot;</span>
+        <span class="loading-text">loading<span id="loading-dots" class="loading-dots"></span></span>
+      </span>
+      <span id="stream-live-indicator" class="live-indicator hidden">
+        <span class="drag-sep">&middot;</span>
+        <span id="stream-live-dot" class="live-dot"></span>
+        <span id="stream-uptime">00:00</span>
+      </span>
+    </span>
+    <div id="drag-actions">
+      <span id="drag-obs-status">
+        <span id="drag-obs-mic" class="stat hidden">
+          <svg class="icon" width="12" height="12" fill="currentColor"><use href="#icon-mic"></use></svg>
+        </span>
+        <span id="drag-obs-desktop" class="stat hidden">
+          <svg class="icon" width="12" height="12" fill="currentColor"><use href="#icon-speaker"></use></svg>
+        </span>
+        <span id="drag-obs-camera" class="stat hidden">
+          <svg class="icon" width="12" height="12" fill="currentColor"><use href="#icon-camera"></use></svg>
+        </span>
+      </span>
+      <button id="btn-settings">&#9881;</button>
+      <button id="btn-lock">&#128275;</button>
+      <button id="btn-quit">&#10005;</button>
+    </div>
+  </div>
+
+  <div id="stats-bar">
+    <span id="stat-viewers" class="stat hidden">
+      <svg class="icon icon-green" width="13" height="13" fill="currentColor"><use href="#icon-head"></use></svg><span id="stat-viewers-value">–</span>
+    </span>
+    <span id="stat-nd-watchers" class="stat hidden">
+      <svg class="icon icon-nano" width="13" height="13" fill="currentColor"><use href="#icon-head"></use></svg><span id="stat-nd-watchers-value">–</span>
+    </span>
+    <span id="stat-nd-rate" class="stat hidden">
+      <span class="rate-text"><span class="accent">$</span><span id="stat-nd-rate-value">–</span><span class="accent">/hr</span></span>
+    </span>
+    <span id="stat-nd-faucet" class="stat hidden">
+      <svg class="icon icon-nano" width="13" height="13" fill="currentColor"><use href="#icon-drop"></use></svg><span id="stat-nd-faucet-value">–</span>
+    </span>
+    <span id="stat-nd-pool" class="stat hidden">
+      <svg class="icon icon-nano" width="13" height="13" fill="currentColor"><use href="#icon-eye"></use></svg><span class="pool-text"><span id="stat-nd-pool-balance">–</span>/<span id="stat-nd-pool-viewers">–</span></span>
+    </span>
+  </div>
+
+  <div id="drop-ticker" class="hidden">
+    <div id="drop-ticker-track"></div>
+  </div>
+
+  <main id="feed" aria-live="polite"></main>
+
+  <section id="settings-panel" class="hidden">
+    <header>
+      <h1>Overlay settings</h1>
+      <button id="settings-close">&#10005;</button>
+    </header>
+
+    <div class="settings-body">
+
+      <fieldset>
+        <legend>Kick chat</legend>
+        <label>Channel slug
+          <input id="in-kick-channel" type="text" placeholder="e.g. stouty" />
+        </label>
+        <label>Chatroom ID <span class="hint">(auto-detect, or paste manually if blocked)</span>
+          <div class="row">
+            <input id="in-kick-chatroom" type="text" placeholder="auto" />
+            <button id="btn-detect-chatroom">Detect</button>
+          </div>
+        </label>
+        <p id="kick-status" class="status">Not connected</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Twitch chat</legend>
+        <label class="check"><input type="checkbox" id="chk-twitch" /> Also connect to Twitch chat</label>
+        <label>Channel login name
+          <input id="in-twitch-channel" type="text" placeholder="e.g. stouty" />
+        </label>
+        <p class="hint">Read-only – no Twitch login/OAuth needed. Runs alongside Kick chat, not instead of it.</p>
+        <p id="twitch-status" class="status">Not connected</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Streamlabs alerts</legend>
+        <label>Socket API token
+          <input id="in-streamlabs-token" type="password" placeholder="paste your token" />
+        </label>
+        <p class="hint">Find it at streamlabs.com &rarr; Dashboard &rarr; Settings &rarr; API Tokens &rarr; Socket API Token. Covers follows, subs, gifted subs, and tips &ndash; including Kicks and PayPal.</p>
+        <p id="streamlabs-status" class="status">Not connected</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>OBS mute status</legend>
+        <label class="check"><input type="checkbox" id="chk-obs" /> Show mic/desktop mute status</label>
+        <label>WebSocket host
+          <input id="in-obs-host" type="text" placeholder="127.0.0.1" />
+        </label>
+        <label>WebSocket port
+          <input id="in-obs-port" type="text" placeholder="4455" />
+        </label>
+        <label>WebSocket password
+          <input id="in-obs-password" type="password" placeholder="from OBS's WebSocket Server Settings" />
+        </label>
+        <label>Mic source name
+          <input id="in-obs-mic" type="text" placeholder="Mic/Aux" />
+        </label>
+        <label>Desktop audio source name
+          <input id="in-obs-desktop" type="text" placeholder="Desktop Audio" />
+        </label>
+        <label>Webcam source name <span class="hint">(optional)</span>
+          <input id="in-obs-webcam" type="text" placeholder="Webcam" />
+        </label>
+        <p class="hint">In OBS: Tools &rarr; WebSocket Server Settings &rarr; enable it and copy the password. Mic/desktop source names must match your OBS Audio Mixer exactly; the webcam source name must match its name in your current scene. Icon colors: green = live/visible, red = muted/hidden.</p>
+        <p id="obs-status" class="status">Not connected</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Show in feed</legend>
+        <label class="check"><input type="checkbox" id="chk-chat" /> Chat messages</label>
+        <label class="check"><input type="checkbox" id="chk-follows" /> Follows</label>
+        <label class="check"><input type="checkbox" id="chk-subs" /> Subs / resubs</label>
+        <label class="check"><input type="checkbox" id="chk-gifted" /> Gifted subs</label>
+        <label class="check"><input type="checkbox" id="chk-tips" /> Tips (Kicks &amp; PayPal)</label>
+        <label class="check"><input type="checkbox" id="chk-viewers" /> Live viewer count</label>
+        <label class="check"><input type="checkbox" id="chk-nanodrops" /> nanodrops stats</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>nanodrops</legend>
+        <label>Faucet ID <span class="hint">(from nanodrops.org/api/faucets/&lt;id&gt;)</span>
+          <input id="in-nanodrops-faucet" type="text" placeholder="e.g. a4552cef" />
+        </label>
+        <label>Second faucet ID <span class="hint">(optional – e.g. a separate Kick/Twitch faucet)</span>
+          <input id="in-nanodrops-faucet-2" type="text" placeholder="leave blank to use just one" />
+        </label>
+        <p class="hint">With both set, watcher counts are combined into one total. Faucet balance instead shows whichever faucet is currently online (the bigger of the two if both are online); drops and messages from either are merged into the same feed.</p>
+        <label>Drop ticker decimal places
+          <input id="in-drop-decimals" type="number" min="0" max="8" step="1" />
+        </label>
+        <p id="nanodrops-status" class="status">Not connected</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Shortcuts</legend>
+        <label>Lock / unlock overlay
+          <button type="button" id="btn-rebind-lock" class="rebind-btn">Control+Shift+L</button>
+        </label>
+        <p class="hint">Click the button, then press the key combination you want. Ctrl+Shift+O always reopens this panel.</p>
+        <p id="lock-shortcut-status" class="status"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Appearance</legend>
+        <label>Text size
+          <input id="in-font-size" type="range" min="12" max="28" step="1" />
+        </label>
+        <label>Background opacity
+          <input id="in-bg-opacity" type="range" min="0" max="0.9" step="0.05" />
+        </label>
+      </fieldset>
+
+      <div class="settings-footer">
+        <button id="btn-save" class="primary">Save &amp; reconnect</button>
+        <span class="hint">Ctrl+Shift+O reopens this panel from anywhere.</span>
+      </div>
+
+    </div>
+  </section>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
