@@ -189,6 +189,7 @@ body.window-focused {
 /* ---------- nano drop line ---------- */
 
 #drop-ticker {
+  flex: 0 0 auto;
   padding: 3px 10px;
   font-size: 12px;
   font-weight: 600;
@@ -211,7 +212,14 @@ body.window-focused {
 #drop-ticker-track .amount { font-weight: 700; color: var(--accent-nano); }
 #drop-ticker-track .sep { opacity: 0.5; }
 
-/* ---------- feed ---------- */
+/* ---------- feed + OBS volume meters ---------- */
+
+#content-row {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  min-height: 0; /* let #feed scroll instead of stretching the window */
+}
 
 #feed {
   flex: 1 1 auto;
@@ -223,6 +231,53 @@ body.window-focused {
   scrollbar-width: none;
 }
 #feed::-webkit-scrollbar { display: none; }
+
+/* Own column to the right of the feed, not interleaved with chat lines. */
+#obs-meters {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 7px;
+  padding: 8px 9px 10px 3px;
+}
+#obs-meters.hidden { display: none; }
+
+.meter-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 10px;
+}
+.meter-col.hidden { display: none; }
+
+.meter-track {
+  flex: 1 1 auto;
+  width: 6px;
+  min-height: 40px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Anchored to the bottom and scaled rather than resized, so updates every
+   ~50ms (driven straight off OBS's own meter events) are cheap GPU-composited
+   transforms instead of layout-triggering height changes. */
+.meter-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  background: var(--accent-follow);
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform 60ms linear, background-color 120ms linear;
+}
+.meter-fill.lvl-yellow { background: #e8c23d; }
+.meter-fill.lvl-red { background: #e0503d; }
+
+.meter-col .icon { color: var(--ink-muted); opacity: 0.8; flex: 0 0 auto; }
+
+/* ---------- feed lines ---------- */
 
 .line {
   position: relative;
@@ -291,6 +346,15 @@ body.window-focused {
 .line.nanotip { border-left-color: var(--accent-nano); }
 .line.nanotip .tag { background: var(--accent-nano); color: #01202e; }
 .line.nanotip .amount { color: var(--accent-nano); }
+
+/* Faucet contributions (kind: null) vs direct tips (kind: "tip") share the
+   nano-blue accent but get a hollow/outline tag instead of a filled one, so
+   the two are distinguishable at a glance without adding a whole new color. */
+.line.nanotip-faucet .tag {
+  background: transparent;
+  color: var(--accent-nano);
+  box-shadow: inset 0 0 0 1px var(--accent-nano);
+}
 
 .line.system {
   color: var(--ink-muted);

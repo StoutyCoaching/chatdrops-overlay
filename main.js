@@ -30,6 +30,7 @@ const store = new Store({
     obsDesktopSource: 'Desktop Audio',
     obsWebcamSource: 'Webcam',
     lockShortcut: 'Control+Shift+L',
+    clearChatShortcut: 'Control+Shift+X',
     windowBounds: { x: undefined, y: undefined, width: 480, height: 640 },
     clickThrough: false
   }
@@ -40,6 +41,7 @@ let tray = null;
 let locked = false; // click-through state
 let streamlabsSocket = null;
 let currentLockAccelerator = null; // whatever's actually registered right now
+let currentClearChatAccelerator = null; // ditto, for the clear-chat shortcut
 
 function sendToRenderer(channel, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -252,6 +254,19 @@ function applyLockShortcut(accelerator) {
   return true;
 }
 
+// Same idea as applyLockShortcut above, for the "clear chat" bind: tries to
+// register `accelerator`, only swaps over if that succeeds, and leaves the
+// previous binding in place (returning false) if the OS/another app already
+// owns that combination.
+function applyClearChatShortcut(accelerator) {
+  if (currentClearChatAccelerator === accelerator) return true;
+  const ok = globalShortcut.register(accelerator, () => sendToRenderer('clear-chat'));
+  if (!ok) return false;
+  if (currentClearChatAccelerator) globalShortcut.unregister(currentClearChatAccelerator);
+  currentClearChatAccelerator = accelerator;
+  return true;
+}
+
 function setClickThrough(state) {
   locked = state;
   if (mainWindow) {
@@ -320,6 +335,11 @@ app.whenReady().then(() => {
   if (!applyLockShortcut(store.get('lockShortcut'))) {
     applyLockShortcut('Control+Shift+L');
   }
+  // Clears the feed – rebindable from Settings the same way as the lock
+  // shortcut above, with the same fallback-to-default behaviour.
+  if (!applyClearChatShortcut(store.get('clearChatShortcut'))) {
+    applyClearChatShortcut('Control+Shift+X');
+  }
   // Ctrl+Shift+O toggles the settings panel.
   globalShortcut.register('Control+Shift+O', () => {
     if (mainWindow) mainWindow.webContents.send('open-settings');
@@ -367,6 +387,12 @@ ipcMain.handle('set-lock-shortcut', (event, accelerator) => {
   const ok = applyLockShortcut(accelerator);
   if (ok) store.set('lockShortcut', accelerator);
   return { ok, accelerator: currentLockAccelerator };
+});
+
+ipcMain.handle('set-clear-chat-shortcut', (event, accelerator) => {
+  const ok = applyClearChatShortcut(accelerator);
+  if (ok) store.set('clearChatShortcut', accelerator);
+  return { ok, accelerator: currentClearChatAccelerator };
 });
 
 ipcMain.handle('quit-app', () => app.quit());

@@ -108,7 +108,19 @@
     <div id="drop-ticker-track"></div>
   </div>
 
-  <main id="feed" aria-live="polite"></main>
+  <div id="content-row">
+    <main id="feed" aria-live="polite"></main>
+    <div id="obs-meters" class="hidden">
+      <div id="meter-mic" class="meter-col hidden" title="Mic level">
+        <div class="meter-track"><div class="meter-fill"></div></div>
+        <svg class="icon" width="11" height="11" fill="currentColor"><use href="#icon-mic"></use></svg>
+      </div>
+      <div id="meter-desktop" class="meter-col hidden" title="Desktop audio level">
+        <div class="meter-track"><div class="meter-fill"></div></div>
+        <svg class="icon" width="11" height="11" fill="currentColor"><use href="#icon-speaker"></use></svg>
+      </div>
+    </div>
+  </div>
 
   <section id="settings-panel" class="hidden">
     <header>
@@ -207,8 +219,12 @@
         <label>Lock / unlock overlay
           <button type="button" id="btn-rebind-lock" class="rebind-btn">Control+Shift+L</button>
         </label>
-        <p class="hint">Click the button, then press the key combination you want. Ctrl+Shift+O always reopens this panel.</p>
         <p id="lock-shortcut-status" class="status"></p>
+        <label>Clear chat feed
+          <button type="button" id="btn-rebind-clear-chat" class="rebind-btn">Control+Shift+X</button>
+        </label>
+        <p id="clear-chat-shortcut-status" class="status"></p>
+        <p class="hint">Click a button, then press the key combination you want. Ctrl+Shift+O always reopens this panel.</p>
       </fieldset>
 
       <fieldset>

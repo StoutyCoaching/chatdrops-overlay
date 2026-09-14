@@ -67,17 +67,6 @@ npm run dist
 ```
 This uses `electron-builder` to produce a Windows installer in `dist/`. Run this on a Windows machine (or with wine configured) since it's building a native Windows target.
 
-### Building it automatically with GitHub Actions
-
-If you'd rather not run the build locally, `.github/workflows/build.yml` builds the installer for you in the cloud on a real Windows runner:
-
-1. Push this project to a GitHub repo (create one if you haven't — e.g. `git init`, `git add .`, `git commit -m "init"`, then create a repo on GitHub and `git push`).
-2. Go to the repo's **Actions** tab. The workflow runs automatically on every push to `main`, or click **Run workflow** to trigger it manually any time.
-3. Once it finishes (a few minutes), open the completed run and download the **kick-stream-overlay-installer** artifact from the bottom of the page — that's your `.exe`, zipped.
-4. Unzip it and run the installer as usual.
-
-Every push to `main` produces a fresh installer this way, so you never need Node.js or electron-builder installed on your own machine.
-
 ## Hotkeys
 
 | Keys | Action |

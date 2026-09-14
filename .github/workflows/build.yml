@@ -1,39 +1,33 @@
-name: Build Windows installer
+name: Build Windows exe
 
-# Runs on every push to main, on pull requests (build-only, for sanity
-# checking), and manually via the "Run workflow" button on the Actions tab.
+# Runs whenever you push to main, or manually from the Actions tab
+# ("Run workflow" button) if you just want a build without pushing.
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 jobs:
   build:
-    # electron-builder needs to run on Windows to produce a Windows NSIS
-    # installer without Wine.
     runs-on: windows-latest
-
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build installer
         run: npm run dist
 
-      - name: Upload installer artifact
+      # electron-builder's nsis target writes the installer .exe into dist/
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kick-stream-overlay-installer
+          name: kick-stream-overlay-windows
           path: dist/*.exe
-          if-no-files-found: error

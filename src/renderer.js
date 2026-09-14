@@ -73,6 +73,10 @@ function addLine(type, html) {
   if (wasNearBottom) feedEl.scrollTop = feedEl.scrollHeight;
 }
 
+function clearFeed() {
+  feedEl.innerHTML = '';
+}
+
 // ---------------------------------------------------------------------------
 // Settings: load, apply, save
 // ---------------------------------------------------------------------------
@@ -109,6 +113,8 @@ function populateSettingsForm(s) {
   document.getElementById('in-bg-opacity').value = s.bgOpacity;
   document.getElementById('btn-rebind-lock').textContent = s.lockShortcut || 'Control+Shift+L';
   document.getElementById('lock-shortcut-status').textContent = '';
+  document.getElementById('btn-rebind-clear-chat').textContent = s.clearChatShortcut || 'Control+Shift+X';
+  document.getElementById('clear-chat-shortcut-status').textContent = '';
 }
 
 async function loadSettings() {
@@ -613,13 +619,34 @@ function formatAmount(item) {
   return '';
 }
 
+function logUnhandledAlert(type, source, item) {
+  console.warn('[streamlabs] unhandled alert type – open devtools to inspect the payload:', type, 'for:', source, item);
+}
+
+// De-dupes on the alert's own _id/hash. Added because a real Kicks payload
+// turned out to arrive via the generic "alertPlaying" event (see that case
+// below) rather than through "donation" as guessed – if some alert type ever
+// ends up reported through more than one of these paths at once, this stops
+// it rendering twice. Items with neither field (most follows/subs) are never
+// deduped, same trimming approach as seenNanoMessageIds/seenDropIds below.
+let seenAlertIds = new Set();
+function alreadySeenAlert(item) {
+  const id = item._id || item.hash;
+  if (!id) return false;
+  if (seenAlertIds.has(id)) return true;
+  seenAlertIds.add(id);
+  if (seenAlertIds.size > 500) seenAlertIds = new Set(Array.from(seenAlertIds).slice(-250));
+  return false;
+}
+
 function handleStreamlabsItem(type, item, source) {
-  // Logged unconditionally: Streamlabs doesn't fully document how a Kicks tip
-  // payload differs from a PayPal tip payload, so this is the quickest way to
-  // check real field names the first time each comes in.
+  // Logged unconditionally: Streamlabs doesn't fully document how each
+  // platform's payload differs, so this is the quickest way to check real
+  // field names the first time something new comes in.
   console.debug('[streamlabs]', type, 'for:', source, item);
 
   const name = escapeHtml(item.name || item.from || 'Someone');
+  if (alreadySeenAlert(item)) return;
 
   switch (type) {
     case 'follow':
@@ -653,19 +680,14 @@ function handleStreamlabsItem(type, item, source) {
       const amount = escapeHtml(formatAmount(item));
       const msg = item.message ? `: <span class="msg">${escapeHtml(item.message)}</span>` : '';
 
-      // Educated guess, not confirmed against a live payload: Streamlabs ties
-      // platform-native events to a "for" value like "twitch_account" /
-      // "youtube_account" (documented), so a Kicks tip most likely arrives as
-      // for: "kick_account". The classic tip-page donation (which for most
-      // streamers means PayPal) has historically come through with for
-      // absent or equal to "streamlabs". Check the console the first time a
-      // real tip of each kind lands and adjust the two conditions below if
-      // the actual value differs.
-      const src = (source || '').toLowerCase();
-      const isKicks = src.includes('kick');
-      const isPaypal = !source || src === 'streamlabs';
-      const label = isKicks ? 'KICKS TIP' : isPaypal ? 'PAYPAL TIP' : 'TIP';
-      const variant = isKicks ? 'tip-kicks' : isPaypal ? 'tip-paypal' : '';
+      // The previous "for"-based Kicks guess here is gone: a real Kicks
+      // payload came through as type "alertPlaying" (handled below), not as
+      // "donation" with for: "kick_account" as guessed. So anything landing
+      // here is the classic tip-page donation, which for most streamers
+      // means PayPal.
+      const isPaypal = !source || source.toLowerCase() === 'streamlabs';
+      const label = isPaypal ? 'PAYPAL TIP' : 'TIP';
+      const variant = isPaypal ? 'tip-paypal' : '';
 
       addLine(`tip ${variant}`.trim(),
         `<span class="tag">${label}</span><span class="user">${name}</span> ` +
@@ -674,9 +696,47 @@ function handleStreamlabsItem(type, item, source) {
       return;
     }
 
+    // Confirmed from a real payload: Streamlabs fires "alertPlaying" for
+    // whatever's currently showing in the alert box, and Kicks-platform
+    // alerts arrive here with item.type === "kicks" / item.platform ===
+    // "kick_account" nested inside, not as their own top-level "kicks" /
+    // "kick_tip" / "kickTip" type as previously guessed – those guesses are
+    // gone. Only the Kicks shape is handled here; other "alertPlaying" items
+    // (the same follow/sub/tip alerts already handled by their own case
+    // above, replaying through this generic firehose) fall through to the
+    // unhandled-alert log instead of risking a duplicate line.
+    case 'alertPlaying': {
+      if (item.type !== 'kicks' && item.platform !== 'kick_account') {
+        logUnhandledAlert(type, source, item);
+        return;
+      }
+      if (!settings.showTips) return;
+
+      // The one real payload seen so far had kickType "LEVEL_UP" – Kick's
+      // loyalty-rank notification, not a fresh tip. Its "amount" reads like
+      // a cumulative Kicks total for the tier rather than a one-off gift, so
+      // it gets its own wording. Worth checking devtools next time an actual
+      // Kicks tip lands, to see what kickType (if any) that one carries.
+      if (item.kickType === 'LEVEL_UP') {
+        const level = escapeHtml(item.levelName || 'a new rank');
+        addLine('tip tip-kicks',
+          `<span class="tag">KICKS</span><span class="user">${name}</span> reached <span class="amount">${level}</span>`
+        );
+        return;
+      }
+
+      const amount = escapeHtml(formatAmount(item));
+      const msg = item.message ? `: <span class="msg">${escapeHtml(item.message)}</span>` : '';
+      addLine('tip tip-kicks',
+        `<span class="tag">KICKS</span><span class="user">${name}</span> sent <span class="amount">${amount}</span>${msg}`
+      );
+      return;
+    }
+
     default:
       // Unrecognized alert type – left out of the feed but visible in devtools
-      // console for calibration.
+      // console (see the unconditional console.debug above) for calibration.
+      logUnhandledAlert(type, source, item);
       return;
   }
 }
@@ -816,9 +876,14 @@ function handleNanodropsMessages(messages) {
     if (!settings.showNanodrops) return;
 
     const amountXno = m.amount && m.amount.xno != null ? Number(m.amount.xno) : null;
-    addLine('nanotip',
-      `<span class="tag">NANO DROP</span><span class="user">${escapeHtml(m.name || 'Someone')}</span> ` +
-      `dropped <span class="amount">${fmtXno(amountXno)}</span>` +
+    // "tip" = a direct viewer-to-viewer/streamer tip; anything else (kind is
+    // null for these) is a contribution into the faucet pool itself.
+    const isDirectTip = m.kind === 'tip';
+    const tag = isDirectTip ? 'NANO' : 'JUICED';
+    const verb = isDirectTip ? 'tipped' : 'juiced the faucet with';
+    addLine(isDirectTip ? 'nanotip' : 'nanotip nanotip-faucet',
+      `<span class="tag">${tag}</span><span class="user">${escapeHtml(m.name || 'Someone')}</span> ` +
+      `${verb} <span class="amount">${fmtXno(amountXno)}</span>` +
       (m.text ? `: <span class="msg">${escapeHtml(m.text)}</span>` : '')
     );
   });
@@ -917,6 +982,31 @@ function applyObsCameraState(visible) {
   setObsStatusChips(['drag-obs-camera'], !!visible);
 }
 
+// Shows/hides the two meter columns independently (only if that source is
+// configured) and the whole sidebar (only if OBS is enabled and at least one
+// of them is set) – same pattern as the mic/desktop/camera chips above.
+function updateObsMetersVisibility() {
+  const showMic = !!(settings.obsEnabled && settings.obsMicSource);
+  const showDesktop = !!(settings.obsEnabled && settings.obsDesktopSource);
+  document.getElementById('meter-mic')?.classList.toggle('hidden', !showMic);
+  document.getElementById('meter-desktop')?.classList.toggle('hidden', !showDesktop);
+  document.getElementById('obs-meters')?.classList.toggle('hidden', !(showMic || showDesktop));
+}
+
+// obs-websocket reports levels as a linear multiplier (0 and up, >1 means
+// clipping), not dB, so it's converted here to match how OBS's own meter
+// reads: -60dB floor (silence) to 0dB ceiling, mapped to a 0–1 fill
+// fraction. Colour bands (green/yellow/red) mirror OBS's meter too.
+function setMeterLevel(colId, mul) {
+  const fill = document.querySelector(`#${colId} .meter-fill`);
+  if (!fill) return;
+  const db = mul > 0 ? 20 * Math.log10(mul) : -100;
+  const frac = Math.max(0, Math.min(1, (Math.max(-60, db) + 60) / 60));
+  fill.style.transform = `scaleY(${frac})`;
+  fill.classList.toggle('lvl-red', db >= -3);
+  fill.classList.toggle('lvl-yellow', db >= -12 && db < -3);
+}
+
 // Webcams don't have a mute toggle – what we can track is whether their
 // scene-item is enabled (shown) in the current program scene. This means
 // resolving a scene name -> scene-item id first, then watching that item.
@@ -985,6 +1075,9 @@ function connectObs() {
   obsWebcamItemId = null;
 
   hideObsChips(['drag-obs-mic', 'drag-obs-desktop', 'drag-obs-camera']);
+  updateObsMetersVisibility();
+  setMeterLevel('meter-mic', 0);
+  setMeterLevel('meter-desktop', 0);
 
   if (!settings.obsEnabled) {
     setObsStatus('Not enabled');
@@ -1009,9 +1102,11 @@ function connectObs() {
         : undefined;
       obsSend({
         op: 1,
-        // General(1) + Scenes(4) + Inputs(8) + SceneItems(128): scene/scene-item
-        // subscriptions are only needed to track webcam visibility.
-        d: { rpcVersion: 1, authentication, eventSubscriptions: 141 }
+        // General(1) + Scenes(4) + Inputs(8) + SceneItems(128) + the
+        // high-volume InputVolumeMeters(65536) category, which drives the
+        // mic/desktop bars and is opt-in since obs-websocket excludes it
+        // from "All" by default.
+        d: { rpcVersion: 1, authentication, eventSubscriptions: 65677 }
       });
       return;
     }
@@ -1089,6 +1184,22 @@ function connectObs() {
         eventData.sceneItemId === obsWebcamItemId
       ) {
         applyObsCameraState(eventData.sceneItemEnabled);
+      }
+
+      // High-volume event, ~20/sec while subscribed – covered in the "OBS
+      // adds too much latency?" sense by updating via a GPU-composited
+      // transform (see .meter-fill) rather than anything layout-triggering.
+      if (eventType === 'InputVolumeMeters' && Array.isArray(eventData.inputs)) {
+        eventData.inputs.forEach((inp) => {
+          // First channel only (mono meter is enough for a level bar);
+          // index 0 of that channel's triplet is the current level – 1/2
+          // are peak/peak-hold, not needed here.
+          const channel = inp.inputLevelsMul && inp.inputLevelsMul[0];
+          if (!channel) return;
+          const mul = channel[0];
+          if (inp.inputName === settings.obsMicSource) setMeterLevel('meter-mic', mul);
+          if (inp.inputName === settings.obsDesktopSource) setMeterLevel('meter-desktop', mul);
+        });
       }
     }
   };
@@ -1177,67 +1288,88 @@ function captureKeyToAccelerator(e) {
   return { accelerator: [...mods, mainKey].join('+') };
 }
 
-const rebindBtn = document.getElementById('btn-rebind-lock');
-let capturingLockShortcut = false;
+// Wires up one "click, then press a key combo" rebind button. Shared by the
+// lock shortcut and the clear-chat shortcut below rather than duplicated,
+// since the two work identically apart from which setting/IPC call they use.
+function setupShortcutRebind({ buttonId, statusId, settingsKey, defaultAccelerator, setShortcut }) {
+  const btn = document.getElementById(buttonId);
+  let capturing = false;
 
-function setLockRebindStatus(text, cls) {
-  const el = document.getElementById('lock-shortcut-status');
-  if (el) {
-    el.textContent = text;
-    el.className = `status ${cls || ''}`.trim();
+  function setStatus(text, cls) {
+    const el = document.getElementById(statusId);
+    if (el) {
+      el.textContent = text;
+      el.className = `status ${cls || ''}`.trim();
+    }
   }
+
+  function startCapture() {
+    capturing = true;
+    btn.textContent = 'Press a key combination…';
+    btn.classList.add('capturing');
+    setStatus('');
+  }
+
+  function stopCapture(displayText) {
+    capturing = false;
+    btn.classList.remove('capturing');
+    btn.textContent = displayText;
+  }
+
+  btn.addEventListener('click', () => {
+    if (!capturing) startCapture();
+  });
+
+  btn.addEventListener('keydown', async (e) => {
+    if (!capturing) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const fallback = settings[settingsKey] || defaultAccelerator;
+
+    if (e.key === 'Escape') {
+      stopCapture(fallback);
+      return;
+    }
+
+    const result = captureKeyToAccelerator(e);
+    if (result.pending) return;
+    if (result.error) {
+      setStatus(result.error, 'err');
+      return;
+    }
+
+    btn.textContent = result.accelerator;
+    const res = await setShortcut(result.accelerator);
+    if (res.ok) {
+      settings[settingsKey] = res.accelerator;
+      stopCapture(res.accelerator);
+      setStatus('Saved.', 'ok');
+    } else {
+      stopCapture(res.accelerator || fallback);
+      setStatus(`Could not bind ${result.accelerator} – already in use by something else.`, 'err');
+    }
+  });
+
+  btn.addEventListener('blur', () => {
+    if (capturing) stopCapture(settings[settingsKey] || defaultAccelerator);
+  });
 }
 
-function startCapture() {
-  capturingLockShortcut = true;
-  rebindBtn.textContent = 'Press a key combination…';
-  rebindBtn.classList.add('capturing');
-  setLockRebindStatus('');
-}
-
-function stopCapture(displayText) {
-  capturingLockShortcut = false;
-  rebindBtn.classList.remove('capturing');
-  rebindBtn.textContent = displayText;
-}
-
-rebindBtn.addEventListener('click', () => {
-  if (!capturingLockShortcut) startCapture();
+setupShortcutRebind({
+  buttonId: 'btn-rebind-lock',
+  statusId: 'lock-shortcut-status',
+  settingsKey: 'lockShortcut',
+  defaultAccelerator: 'Control+Shift+L',
+  setShortcut: (accelerator) => overlay.setLockShortcut(accelerator)
 });
 
-rebindBtn.addEventListener('keydown', async (e) => {
-  if (!capturingLockShortcut) return;
-  e.preventDefault();
-  e.stopPropagation();
-
-  const fallback = settings.lockShortcut || 'Control+Shift+L';
-
-  if (e.key === 'Escape') {
-    stopCapture(fallback);
-    return;
-  }
-
-  const result = captureKeyToAccelerator(e);
-  if (result.pending) return;
-  if (result.error) {
-    setLockRebindStatus(result.error, 'err');
-    return;
-  }
-
-  rebindBtn.textContent = result.accelerator;
-  const res = await overlay.setLockShortcut(result.accelerator);
-  if (res.ok) {
-    settings.lockShortcut = res.accelerator;
-    stopCapture(res.accelerator);
-    setLockRebindStatus('Saved.', 'ok');
-  } else {
-    stopCapture(res.accelerator || fallback);
-    setLockRebindStatus(`Could not bind ${result.accelerator} – already in use by something else.`, 'err');
-  }
-});
-
-rebindBtn.addEventListener('blur', () => {
-  if (capturingLockShortcut) stopCapture(settings.lockShortcut || 'Control+Shift+L');
+setupShortcutRebind({
+  buttonId: 'btn-rebind-clear-chat',
+  statusId: 'clear-chat-shortcut-status',
+  settingsKey: 'clearChatShortcut',
+  defaultAccelerator: 'Control+Shift+X',
+  setShortcut: (accelerator) => overlay.setClearChatShortcut(accelerator)
 });
 
 // Shows a faint outline around the window's true bounds while it has focus,
@@ -1247,6 +1379,7 @@ overlay.onWindowFocusChanged((focused) => {
 });
 
 overlay.onOpenSettings(() => openSettings());
+overlay.onClearChat(() => clearFeed());
 
 document.getElementById('btn-detect-chatroom').addEventListener('click', async () => {
   const slug = document.getElementById('in-kick-channel').value;
