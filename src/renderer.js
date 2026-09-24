@@ -1458,13 +1458,13 @@ function handleNanodropsDrops(drops, baselineFaucets) {
 }
 
 // Maps a nanodrops faucet id back to which stream it belongs to. With both
-// faucet IDs set, the first box (Kick Faucet ID) is Kick's and the second
-// (Twitch Faucet ID) is Twitch's - to swap them, swap the two entries below.
+// faucet IDs set, the first box (Twitch Faucet ID) is Twitch's and the second
+// (Kick Faucet ID) is Kick's - to swap them, swap the two entries below.
 // With only one faucet set there's nothing to tell apart, so it takes the
 // colour of whichever platform is live (Kick if both are, Kick if neither).
 // Returns 'kick', 'twitch', or null if the id matches neither box (e.g. it
 // was just changed in settings and this message predates the change).
-const FAUCET_SLOT_PLATFORMS = ['kick', 'twitch']; // [first box, second box]
+const FAUCET_SLOT_PLATFORMS = ['twitch', 'kick']; // [first box, second box]
 function faucetPlatformFor(faucetId) {
   if (!faucetId) return null;
   const first = settings.nanodropsFaucetId;
