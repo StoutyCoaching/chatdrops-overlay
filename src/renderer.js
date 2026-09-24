@@ -1463,8 +1463,8 @@ function handleNanodropsDrops(drops, baselineFaucets) {
 // id was just changed in settings and this message predates the change).
 function faucetPlatformFor(faucetId) {
   if (!faucetId) return null;
-  if (settings.nanodropsFaucetId && faucetId === settings.nanodropsFaucetId) return 'kick';
-  if (settings.nanodropsFaucetId2 && faucetId === settings.nanodropsFaucetId2) return 'twitch';
+  if (settings.nanodropsFaucetId && faucetId === settings.nanodropsFaucetId) return 'twitch';
+  if (settings.nanodropsFaucetId2 && faucetId === settings.nanodropsFaucetId2) return 'kick';
   return null;
 }
 
