@@ -31,6 +31,8 @@ const store = new Store({
     showBits: true,
     showRaids: true,
     showViewerCount: true,
+    showKickTimer: true,
+    showTwitchTimer: true,
     showNanodrops: true,
     nanodropsFaucetId: 'a4552cef',
     nanodropsFaucetId2: '',
@@ -428,6 +430,11 @@ async function pollNanodrops({ force = false } = {}) {
     sendToRenderer('nanodrops-data', {
       streamWatchers: watcherValues.length ? watcherValues.reduce((a, b) => a + Number(b), 0) : null,
       faucetBalanceXno,
+      // Every faucet's own balance/online status, so the overlay can show one
+      // chip per platform instead of just the larger of the two.
+      faucets: faucets
+        .filter(({ src }) => src.data)
+        .map(({ id, src }) => ({ id, balanceXno: src.data.balanceXno, online: src.data.online })),
       hourlyRateUsd: stats ? stats.hourlyRateUsd : null,
       networkActiveUsers: stats ? stats.activeUsers : null,
       networkActiveNanoXno: stats ? stats.activeNanoXno : null,

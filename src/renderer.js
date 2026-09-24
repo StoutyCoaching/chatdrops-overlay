@@ -143,6 +143,8 @@ function populateSettingsForm(s) {
   document.getElementById('chk-bits').checked = !!s.showBits;
   document.getElementById('chk-raids').checked = !!s.showRaids;
   document.getElementById('chk-viewers').checked = !!s.showViewerCount;
+  document.getElementById('chk-kick-timer').checked = s.showKickTimer !== false;
+  document.getElementById('chk-twitch-timer').checked = s.showTwitchTimer !== false;
   document.getElementById('chk-nanodrops').checked = !!s.showNanodrops;
   document.getElementById('in-nanodrops-faucet').value = s.nanodropsFaucetId || '';
   document.getElementById('in-nanodrops-faucet-2').value = s.nanodropsFaucetId2 || '';
@@ -185,20 +187,7 @@ const KICK_PUSHER_URL =
 // the fallback when a chatter has no color of their own to show.
 const KICK_BRAND_GREEN = '#53FC18';
 const TWITCH_BRAND_PURPLE = '#9146FF';
-const KICK_BRAND_GREEN_GLOW = 'rgba(83, 252, 24, 0.7)';
-const TWITCH_BRAND_PURPLE_GLOW = 'rgba(145, 70, 255, 0.7)';
 const DEFAULT_CHAT_COLOR = '#E0DCCF';
-
-// Drives the uptime timer / viewer-count / per-faucet nanodrops accents so they
-// match whichever platform is currently the live one (see liveSource in
-// pollStreamStatus). Defaults to Kick's green when nothing is live yet,
-// since the elements that use this are hidden in that state anyway.
-function applyLivePlatformColor(source) {
-  const color = source === 'twitch' ? TWITCH_BRAND_PURPLE : KICK_BRAND_GREEN;
-  const glow = source === 'twitch' ? TWITCH_BRAND_PURPLE_GLOW : KICK_BRAND_GREEN_GLOW;
-  document.documentElement.style.setProperty('--live-platform-color', color);
-  document.documentElement.style.setProperty('--live-platform-glow', glow);
-}
 
 // Badge types Kick sends on sender.identity.badges. Unknown/future types
 // (e.g. staff, sub_gifter, trusted_user) are silently skipped rather than
@@ -784,11 +773,21 @@ function startTwitchChat() {
 // Clock + stream live status/uptime (top strip)
 // ---------------------------------------------------------------------------
 
-let streamLive = false;
-let streamStartTime = null; // Date, or null when offline/unknown
-let liveSource = null; // 'kick' | 'twitch' | null – whichever platform is currently driving the indicator
+// Live state per platform. Both can be live at once; each drives its own
+// timer and viewer chip. `start` is a Date, or null when offline/unknown.
+const liveState = {
+  kick: { live: false, start: null },
+  twitch: { live: false, start: null }
+};
 let lastKickStartRaw = null; // last raw start_time/created_at string from Kick, for diagnostics
 let lastTwitchStartRaw = null; // last raw createdAt string from Twitch, for diagnostics
+
+// A platform's timer shows only while it's live AND its "Display ... live
+// timer" setting is on (both default to on).
+function timerVisible(platform) {
+  const enabled = platform === 'kick' ? settings.showKickTimer : settings.showTwitchTimer;
+  return liveState[platform].live && enabled !== false;
+}
 
 function formatUptime(ms) {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -801,36 +800,37 @@ function formatUptime(ms) {
 }
 
 function tickClockAndUptime() {
+  const kickTimer = timerVisible('kick');
+  const twitchTimer = timerVisible('twitch');
+
   const clockEl = document.getElementById('clock-time');
-  // Drop the seconds from the clock while the live timer is showing its own
+  // Drop the seconds from the clock while a live timer is showing its own
   // running seconds counter, so there's only one seconds-ticking number in
   // the strip at a time. No explicit locale passed, so this still follows
   // the OS's own clock format (12h/24h, separators, etc.) either way.
   if (clockEl) {
-    clockEl.textContent = streamLive
+    clockEl.textContent = (kickTimer || twitchTimer)
       ? new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       : new Date().toLocaleTimeString();
   }
 
-  const indicatorEl = document.getElementById('stream-live-indicator');
-  if (indicatorEl) indicatorEl.classList.toggle('hidden', !streamLive);
-
-  const uptimeEl = document.getElementById('stream-uptime');
-  if (uptimeEl && streamLive) {
-    uptimeEl.textContent = streamStartTime
-      ? formatUptime(Date.now() - streamStartTime.getTime())
-      : '00:00';
+  [
+    { key: 'kick', name: 'Kick', visible: kickTimer, raw: lastKickStartRaw },
+    { key: 'twitch', name: 'Twitch', visible: twitchTimer, raw: lastTwitchStartRaw }
+  ].forEach(({ key, name, visible, raw }) => {
+    const indicatorEl = document.getElementById(`stream-live-${key}`);
+    if (indicatorEl) indicatorEl.classList.toggle('hidden', !visible);
+    const uptimeEl = document.getElementById(`stream-uptime-${key}`);
+    if (!uptimeEl || !visible) return;
+    const start = liveState[key].start;
+    uptimeEl.textContent = start ? formatUptime(Date.now() - start.getTime()) : '00:00';
     // Hover the uptime to see exactly what the live platform sent us and how
     // we read it - the quickest way to tell a platform-side start-time issue
     // apart from a parsing bug on our end.
-    if (streamStartTime && liveSource === 'kick') {
-      uptimeEl.title = `Kick sent: ${lastKickStartRaw}\nRead as (UTC): ${streamStartTime.toISOString()}\nYour local time: ${streamStartTime.toString()}`;
-    } else if (streamStartTime && liveSource === 'twitch') {
-      uptimeEl.title = `Twitch sent: ${lastTwitchStartRaw}\nRead as (UTC): ${streamStartTime.toISOString()}\nYour local time: ${streamStartTime.toString()}`;
-    } else {
-      uptimeEl.title = '';
-    }
-  }
+    uptimeEl.title = start
+      ? `${name} sent: ${raw}\nRead as (UTC): ${start.toISOString()}\nYour local time: ${start.toString()}`
+      : '';
+  });
 }
 
 setInterval(tickClockAndUptime, 1000);
@@ -943,10 +943,11 @@ function settlePlatformStatus(key, channel, result, parse) {
 }
 
 // Polls Kick and Twitch's live status together and decides what the drag-bar
-// indicator/timer and viewer count show. When both are live at once, Kick
-// wins (matches this overlay's Kick-first design elsewhere); Twitch is only
-// shown when Kick isn't live. Twitch status is tracked whenever a Twitch
-// channel is configured, independent of whether Twitch chat display is on.
+// timers and viewer counts show. Each platform has its own timer and viewer
+// chip, so when both are live at once both are shown (Kick first, in Kick
+// green; Twitch second, in Twitch purple). Twitch status is tracked whenever
+// a Twitch channel is configured, independent of whether Twitch chat display
+// is on.
 // Token of the poll currently running. Ticks never overlap (a second poll
 // racing the first could count one outage's failures twice); pressing Save
 // starts a fresh poll on purpose (`force`), abandoning the old one, since the
@@ -958,10 +959,10 @@ async function pollStreamStatus({ force = false } = {}) {
   const hasTwitch = !!settings.twitchChannel;
 
   if (!hasKick && !hasTwitch) {
-    streamLive = false;
-    streamStartTime = null;
-    liveSource = null;
-    document.getElementById('stat-viewers').classList.add('hidden');
+    liveState.kick = { live: false, start: null };
+    liveState.twitch = { live: false, start: null };
+    document.getElementById('stat-viewers-kick').classList.add('hidden');
+    document.getElementById('stat-viewers-twitch').classList.add('hidden');
     markLoadDone('kick');
     return;
   }
@@ -1007,29 +1008,28 @@ async function runStreamStatusPoll(token, hasKick, hasTwitch) {
   const kickLive = kick.live;
   const twitchLive = twitch.live;
 
-  if (kickLive) {
-    streamLive = true;
-    streamStartTime = kick.start;
-    liveSource = 'kick';
-  } else if (twitchLive) {
-    streamLive = true;
-    streamStartTime = twitch.start;
-    liveSource = 'twitch';
-  } else {
-    streamLive = false;
-    streamStartTime = null;
-    liveSource = null;
-  }
-  applyLivePlatformColor(liveSource);
+  liveState.kick = { live: kickLive, start: kickLive ? kick.start : null };
+  liveState.twitch = { live: twitchLive, start: twitchLive ? twitch.start : null };
 
-  const el = document.getElementById('stat-viewers');
-  const valueEl = document.getElementById('stat-viewers-value');
+  // One viewer chip per live platform (both when both are live). When neither
+  // is live a single chip reads "offline" - Kick's, unless only Twitch is set up.
+  const kickChip = document.getElementById('stat-viewers-kick');
+  const twitchChip = document.getElementById('stat-viewers-twitch');
   if (settings.showViewerCount) {
-    el.classList.remove('hidden');
-    const viewers = kickLive ? kick.viewers : (twitchLive ? twitch.viewers : null);
-    valueEl.textContent = viewers != null ? fmtViewers(viewers) : (streamLive ? '–' : 'offline');
+    const anyLive = kickLive || twitchLive;
+    const showKick = kickLive || (!anyLive && (hasKick || !hasTwitch));
+    const showTwitch = twitchLive || (!anyLive && !showKick);
+    const fill = (chip, live, viewers) => {
+      document.getElementById(`${chip.id}-value`).textContent =
+        live ? (viewers != null ? fmtViewers(viewers) : '–') : 'offline';
+    };
+    kickChip.classList.toggle('hidden', !showKick);
+    twitchChip.classList.toggle('hidden', !showTwitch);
+    if (showKick) fill(kickChip, kickLive, kick.viewers);
+    if (showTwitch) fill(twitchChip, twitchLive, twitch.viewers);
   } else {
-    el.classList.add('hidden');
+    kickChip.classList.add('hidden');
+    twitchChip.classList.add('hidden');
   }
 
   markLoadDone('kick');
@@ -1178,7 +1178,7 @@ function handleStreamlabsItem(type, item, source) {
       } else {
         if (!settings.showSubs) return;
         const months = item.months || item.streak_months;
-        // Reads "SUB <name> <message> (<n> mo)". No "subscribed" wording – the
+        // Reads "SUB <name> <message> (<n> month|months)". No "subscribed" wording – the
         // SUB tag already says it – and the sub's own message (resubs can carry
         // one) is shown when there is one. Same handling for Kick and Twitch.
         // Twitch resub messages can contain emotes; Streamlabs passes them in
@@ -1193,7 +1193,7 @@ function handleStreamlabsItem(type, item, source) {
         addLine(withPlat('sub'),
           `<span class="tag">SUB</span><span class="user">${name}</span>` +
           (subHtml ? ` <span class="msg">${subHtml}</span>` : '') +
-          (months ? ` <span class="amount">(${escapeHtml(String(months))} mo)</span>` : '')
+          (months ? ` <span class="amount">(${escapeHtml(String(months))} ${Number(months) === 1 ? 'month' : 'months'})</span>` : '')
         );
       }
       return;
@@ -1457,15 +1457,25 @@ function handleNanodropsDrops(drops, baselineFaucets) {
   }
 }
 
-// Maps a nanodrops faucet id back to which stream it belongs to, based on
-// the two faucet ids configured in settings (Kick Faucet ID / Twitch Faucet
-// ID). Returns 'kick', 'twitch', or null if it matches neither (e.g. the
-// id was just changed in settings and this message predates the change).
+// Maps a nanodrops faucet id back to which stream it belongs to. With both
+// faucet IDs set, the first box (Kick Faucet ID) is Kick's and the second
+// (Twitch Faucet ID) is Twitch's - to swap them, swap the two entries below.
+// With only one faucet set there's nothing to tell apart, so it takes the
+// colour of whichever platform is live (Kick if both are, Kick if neither).
+// Returns 'kick', 'twitch', or null if the id matches neither box (e.g. it
+// was just changed in settings and this message predates the change).
+const FAUCET_SLOT_PLATFORMS = ['kick', 'twitch']; // [first box, second box]
 function faucetPlatformFor(faucetId) {
   if (!faucetId) return null;
-  if (settings.nanodropsFaucetId && faucetId === settings.nanodropsFaucetId) return 'twitch';
-  if (settings.nanodropsFaucetId2 && faucetId === settings.nanodropsFaucetId2) return 'kick';
-  return null;
+  const first = settings.nanodropsFaucetId;
+  const second = settings.nanodropsFaucetId2;
+  if (first && second) {
+    if (faucetId === first) return FAUCET_SLOT_PLATFORMS[0];
+    if (faucetId === second) return FAUCET_SLOT_PLATFORMS[1];
+    return null;
+  }
+  if (faucetId !== first && faucetId !== second) return null;
+  return liveState.kick.live || !liveState.twitch.live ? 'kick' : 'twitch';
 }
 
 function handleNanodropsMessages(messages, baselineFaucets) {
@@ -1524,7 +1534,7 @@ function handleNanodropsData(data) {
   if (!data) return;
   setNanodropsStat('stat-nd-watchers', data.streamWatchers != null, String(data.streamWatchers));
   setNanodropsStat('stat-nd-rate', data.hourlyRateUsd != null, fmtUsd(data.hourlyRateUsd));
-  setNanodropsStat('stat-nd-faucet', data.faucetBalanceXno != null, fmtXno(data.faucetBalanceXno));
+  handleNanodropsFaucets(data.faucets);
   handleNanodropsPool(data.networkActiveNanoXno, data.networkActiveUsers);
 
   // Any faucet appearing in `freshFaucetIds` for the first time has just had
@@ -1533,6 +1543,24 @@ function handleNanodropsData(data) {
   handleNanodropsMessages(data.messages, newlyBaselined);
   handleNanodropsDrops(data.drops, newlyBaselined);
   newlyBaselined.forEach((id) => baselinedFaucets.add(id));
+}
+
+// One balance chip per platform (Kick green / Twitch purple), so both faucets
+// show when both are set up. As before, a faucet whose stream is offline
+// leaves its balance out; a faucet with no reported status counts as online.
+// Should two faucets somehow resolve to the same platform, the bigger balance wins.
+function handleNanodropsFaucets(faucets) {
+  const best = { kick: null, twitch: null };
+  (Array.isArray(faucets) ? faucets : []).forEach((f) => {
+    if (!f || f.online === false || f.balanceXno == null) return;
+    const platform = faucetPlatformFor(f.id);
+    if (!platform) return;
+    const balance = Number(f.balanceXno);
+    if (best[platform] == null || balance > best[platform]) best[platform] = balance;
+  });
+  ['kick', 'twitch'].forEach((platform) => {
+    setNanodropsStat(`stat-nd-faucet-${platform}`, best[platform] != null, fmtXno(best[platform]));
+  });
 }
 
 function handleNanodropsPool(balanceXno, viewers) {
@@ -1551,7 +1579,7 @@ function handleNanodropsPool(balanceXno, viewers) {
 }
 
 function hideNanodropsChips() {
-  ['stat-nd-watchers', 'stat-nd-rate', 'stat-nd-faucet', 'stat-nd-pool']
+  ['stat-nd-watchers', 'stat-nd-rate', 'stat-nd-faucet-kick', 'stat-nd-faucet-twitch', 'stat-nd-pool']
     .forEach((id) => document.getElementById(id)?.classList.add('hidden'));
 }
 
@@ -2171,6 +2199,8 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     showBits: document.getElementById('chk-bits').checked,
     showRaids: document.getElementById('chk-raids').checked,
     showViewerCount: document.getElementById('chk-viewers').checked,
+    showKickTimer: document.getElementById('chk-kick-timer').checked,
+    showTwitchTimer: document.getElementById('chk-twitch-timer').checked,
     showNanodrops: document.getElementById('chk-nanodrops').checked,
     nanodropsFaucetId: document.getElementById('in-nanodrops-faucet').value.trim(),
     nanodropsFaucetId2: document.getElementById('in-nanodrops-faucet-2').value.trim(),

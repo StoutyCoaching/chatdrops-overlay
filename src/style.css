@@ -19,8 +19,6 @@
   --accent-nano: #1aace8;
   --mute-mic: #ff3b3b;
   --mute-desktop: #e8823d;
-  --live-platform-color: #53FC18;
-  --live-platform-glow: rgba(83, 252, 24, 0.7);
   --font-size: 16px;
   --font-stack: -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", sans-serif;
 }
@@ -128,13 +126,14 @@ body.window-focused {
   flex: 0 0 auto;
 }
 
-/* The stream timer takes the colour of the platform being streamed to
-   (--live-platform-color: Kick green / Twitch purple, set from pollStreamStatus). */
-#stream-uptime { color: var(--live-platform-color); }
+/* Each stream timer takes its own platform's colour: Kick green / Twitch
+   purple. When both streams are live both timers show side by side. */
+.stream-uptime-kick { color: var(--accent-kick); }
+.stream-uptime-twitch { color: var(--accent-twitch); }
 /* ...except while the bar is flashing a mute warning: that state is white text
    on a solid colour, where green/purple would be hard to read. */
-#drag-strip.muted-mic #stream-uptime,
-#drag-strip.muted-desktop #stream-uptime { color: inherit; }
+#drag-strip.muted-mic .stream-uptime,
+#drag-strip.muted-desktop .stream-uptime { color: inherit; }
 
 #drag-actions {
   -webkit-app-region: no-drag;
@@ -214,15 +213,14 @@ body.window-focused {
 .icon-status-live { color: var(--accent-follow); }
 .icon-status-muted { color: #000; }
 
-/* The per-faucet ("this stream's") nanodrops drop icon and the viewer count
-   icon track whichever platform is currently live. The $/hr rate, the pool
-   (total network) chip, and the watcher-count icon keep their normal
-   nano-blue/green colors. */
-#stat-viewers .icon-green,
-#stat-nd-faucet .icon-nano,
-#stat-nd-faucet .accent {
-  color: var(--live-platform-color);
-}
+/* Viewer-count and per-faucet chips are coloured by platform: Kick green,
+   Twitch purple (one chip per platform, so both show when both are live).
+   The $/hr rate, the pool (total network) chip, and the watcher-count icon
+   keep their normal nano-blue/green colors. */
+.icon-kick { color: var(--accent-kick); }
+.icon-twitch { color: var(--accent-twitch); }
+.stat-faucet-kick .accent { color: var(--accent-kick); }
+.stat-faucet-twitch .accent { color: var(--accent-twitch); }
 
 .badges { display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; }
 .badge-icon-wrap { display: inline-flex; width: 13px; height: 13px; }

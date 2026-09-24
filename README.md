@@ -8,17 +8,16 @@ A transparent, always-on-top desktop overlay for Kick + Twitch streamers: live c
 
 - **Live chat** — connects directly to Kick (no auth needed) and, optionally, Twitch. Emotes, badges, `/me` messages, and Twitch's first-time-chatter highlight are all rendered. Deleted messages and banned/timed-out users are removed from the feed live.
 - **Alerts via Streamlabs** — follows, subs/resubs (with message + emotes), gifted subs, tips (Kicks & PayPal), Twitch bits, and raids. Each alert is colored by platform (Kick green / Twitch purple).
-- **Live stats bar** — viewer count and stream uptime (colored by platform), with a small OBS mic-level meter and mute indicators when OBS is connected.
+- **Live stats bar** — viewer count and stream uptime (Kick green / Twitch purple). If you're live on both, both viewer counts and both timers are shown, along with each platform's nanodrops faucet. Also a small OBS mic-level meter and mute indicators when OBS is connected.
 - **nanodrops stats** — your faucet's watchers/balance and network-wide totals, plus a scrolling ticker of recent drops and viewer messages.
 - Draggable, resizable, and lockable into click-through mode so it stops eating mouse clicks over your game.
 
 ## Download & run (Windows)
 
-1. Go to the [Releases page](../../releases) and download the latest `.zip`.
-2. Extract it anywhere — it's a folder, not a single installer, so keep everything together.
-3. Run `Kick Stream Overlay.exe` inside the extracted folder.
-4. The app isn't code-signed, so Windows will likely show a **"Windows protected your PC"** SmartScreen warning on first launch. Click **More info → Run anyway**.
-5. Continue with **First-time setup** below.
+1. Go to the [Releases page](../../releases) and download the latest `.exe`.
+2. Run `Kick Stream Overlay.exe`
+3. The app isn't code-signed, so Windows will likely show a **"Windows protected your PC"** SmartScreen warning on first launch. Click **More info → Run anyway**.
+4. Continue with **First-time setup** below.
 
 ## First-time setup
 
@@ -46,7 +45,7 @@ Then continue with **First-time setup** above.
 - **Kick / Twitch** — channel names, and per-platform toggles to force usernames into a fixed brand color instead of the chatter's own color.
 - **Streamlabs** — Socket API token.
 - **OBS** — optional WebSocket connection for mic/desktop mute icons and a mic level meter; needs host, port, password, and the exact source names from your OBS scene.
-- **Show in feed** — per-type toggles: chat, follows, subs, gifted subs, tips, bits, raids, live viewer count, nanodrops stats.
+- **Show in feed** — per-type toggles: chat, follows, subs, gifted subs, tips, bits, raids, live viewer count, Kick live timer, Twitch live timer, nanodrops stats.
 - **nanodrops** — one or two faucet IDs, and decimal places for the drop ticker vs. balance/JUICED alerts.
 - **Shortcuts** — rebind the lock and clear-chat hotkeys, and set the new-message grace period (how recent a chat line must be to survive a manual clear).
 - **Appearance** — text size, background opacity, top bar opacity.
