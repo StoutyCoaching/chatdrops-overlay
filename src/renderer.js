@@ -1457,6 +1457,17 @@ function handleNanodropsDrops(drops, baselineFaucets) {
   }
 }
 
+// Maps a nanodrops faucet id back to which stream it belongs to, based on
+// the two faucet ids configured in settings (Kick Faucet ID / Twitch Faucet
+// ID). Returns 'kick', 'twitch', or null if it matches neither (e.g. the
+// id was just changed in settings and this message predates the change).
+function faucetPlatformFor(faucetId) {
+  if (!faucetId) return null;
+  if (settings.nanodropsFaucetId && faucetId === settings.nanodropsFaucetId) return 'kick';
+  if (settings.nanodropsFaucetId2 && faucetId === settings.nanodropsFaucetId2) return 'twitch';
+  return null;
+}
+
 function handleNanodropsMessages(messages, baselineFaucets) {
   if (!Array.isArray(messages) || messages.length === 0) return;
 
@@ -1477,6 +1488,14 @@ function handleNanodropsMessages(messages, baselineFaucets) {
     const isDirectTip = m.kind === 'tip';
     const isAnonymousDeposit = m.kind === 'faucet-deposit';
     const tag = isDirectTip ? 'NANO' : 'JUICED';
+    // Which stream's faucet this message came from, so JUICED lines can name
+    // it ("Kick faucet" / "Twitch faucet") in that platform's brand color.
+    // Falls back to a plain, uncolored "faucet" if the id doesn't match
+    // either configured faucet (e.g. it was just changed in settings).
+    const faucetPlatform = faucetPlatformFor(m.faucetId);
+    const faucetLabel = faucetPlatform
+      ? `<span class="faucet-platform-word faucet-platform-${faucetPlatform}">${faucetPlatform === 'kick' ? 'Kick' : 'Twitch'}</span> faucet`
+      : 'faucet';
 
     let body;
     if (isAnonymousDeposit) {
@@ -1485,10 +1504,10 @@ function handleNanodropsMessages(messages, baselineFaucets) {
       // out of the raw balance increase), so if the reported amount ever
       // looks off, the underlying numbers are here in DevTools to check.
       console.debug('[nanodrops] anonymous deposit', amountXno, m.debug || null);
-      body = `<span class="tag">${tag}</span>The faucet was juiced with ` +
+      body = `<span class="tag">${tag}</span>${faucetLabel} juiced ` +
         `<span class="amount">${fmtXnoRoundedUp(amountXno)}</span>`;
     } else {
-      const verb = isDirectTip ? 'tipped' : 'juiced the faucet with';
+      const verb = isDirectTip ? 'tipped' : `juiced the ${faucetLabel} with`;
       body = `<span class="tag">${tag}</span><span class="user">${escapeHtml(m.name || 'Someone')}</span> ` +
         `${verb} <span class="amount">${fmtXno(amountXno)}</span>` +
         (m.text ? `: <span class="msg">${escapeHtml(m.text)}</span>` : '');

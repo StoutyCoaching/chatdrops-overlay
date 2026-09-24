@@ -390,6 +390,12 @@ body.window-focused {
   box-shadow: inset 0 0 0 1px var(--accent-nano);
 }
 
+/* Names which stream's faucet a JUICED line came from ("Kick faucet" /
+   "Twitch faucet"), in that platform's brand color. The JUICED tag itself
+   stays nano-colored above; only this one word shifts per platform. */
+.faucet-platform-word.faucet-platform-kick { color: var(--accent-kick); font-weight: 700; }
+.faucet-platform-word.faucet-platform-twitch { color: var(--accent-twitch); font-weight: 700; }
+
 .line.system {
   color: var(--ink-muted);
   font-style: italic;
