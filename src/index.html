@@ -59,12 +59,10 @@
     <span id="drag-status">
       <span id="clock-time"></span>
       <span id="startup-loading" class="startup-loading hidden">
-        <span class="drag-sep">&middot;</span>
         <span class="loading-text">loading<span id="loading-dots" class="loading-dots"></span></span>
       </span>
       <span id="stream-live-indicator" class="live-indicator hidden">
-        <span class="drag-sep">&middot;</span>
-        <span id="stream-live-dot" class="live-dot"></span>
+        <span class="live-sep"></span>
         <span id="stream-uptime">00:00</span>
       </span>
     </span>
@@ -110,16 +108,6 @@
 
   <div id="content-row">
     <main id="feed" aria-live="polite"></main>
-    <div id="obs-meters" class="hidden">
-      <div id="meter-mic" class="meter-col hidden" title="Mic level">
-        <div class="meter-track"><div class="meter-fill"></div></div>
-        <svg class="icon" width="11" height="11" fill="currentColor"><use href="#icon-mic"></use></svg>
-      </div>
-      <div id="meter-desktop" class="meter-col hidden" title="Desktop audio level">
-        <div class="meter-track"><div class="meter-fill"></div></div>
-        <svg class="icon" width="11" height="11" fill="currentColor"><use href="#icon-speaker"></use></svg>
-      </div>
-    </div>
   </div>
 
   <section id="settings-panel" class="hidden">
@@ -135,7 +123,7 @@
         <label>Channel slug
           <input id="in-kick-channel" type="text" placeholder="e.g. stouty" />
         </label>
-        <label>Chatroom ID <span class="hint">(auto-detect, or paste manually if blocked)</span>
+        <label>Chatroom ID
           <div class="row">
             <input id="in-kick-chatroom" type="text" placeholder="auto" />
             <button id="btn-detect-chatroom">Detect</button>
@@ -150,8 +138,13 @@
         <label>Channel login name
           <input id="in-twitch-channel" type="text" placeholder="e.g. stouty" />
         </label>
-        <p class="hint">Read-only – no Twitch login/OAuth needed. Runs alongside Kick chat, not instead of it.</p>
         <p id="twitch-status" class="status">Not connected</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Chat username colors</legend>
+        <label class="check"><input type="checkbox" id="chk-kick-platform-color" /> Force Kick usernames to Kick green</label>
+        <label class="check"><input type="checkbox" id="chk-twitch-platform-color" /> Force Twitch usernames to Twitch purple</label>
       </fieldset>
 
       <fieldset>
@@ -159,7 +152,6 @@
         <label>Socket API token
           <input id="in-streamlabs-token" type="password" placeholder="paste your token" />
         </label>
-        <p class="hint">Find it at streamlabs.com &rarr; Dashboard &rarr; Settings &rarr; API Tokens &rarr; Socket API Token. Covers follows, subs, gifted subs, and tips &ndash; including Kicks and PayPal.</p>
         <p id="streamlabs-status" class="status">Not connected</p>
       </fieldset>
 
@@ -181,10 +173,9 @@
         <label>Desktop audio source name
           <input id="in-obs-desktop" type="text" placeholder="Desktop Audio" />
         </label>
-        <label>Webcam source name <span class="hint">(optional)</span>
+        <label>Webcam source name
           <input id="in-obs-webcam" type="text" placeholder="Webcam" />
         </label>
-        <p class="hint">In OBS: Tools &rarr; WebSocket Server Settings &rarr; enable it and copy the password. Mic/desktop source names must match your OBS Audio Mixer exactly; the webcam source name must match its name in your current scene. Icon colors: green = live/visible, red = muted/hidden.</p>
         <p id="obs-status" class="status">Not connected</p>
       </fieldset>
 
@@ -195,21 +186,25 @@
         <label class="check"><input type="checkbox" id="chk-subs" /> Subs / resubs</label>
         <label class="check"><input type="checkbox" id="chk-gifted" /> Gifted subs</label>
         <label class="check"><input type="checkbox" id="chk-tips" /> Tips (Kicks &amp; PayPal)</label>
+        <label class="check"><input type="checkbox" id="chk-bits" /> Bits (Twitch)</label>
+        <label class="check"><input type="checkbox" id="chk-raids" /> Raids</label>
         <label class="check"><input type="checkbox" id="chk-viewers" /> Live viewer count</label>
         <label class="check"><input type="checkbox" id="chk-nanodrops" /> nanodrops stats</label>
       </fieldset>
 
       <fieldset>
         <legend>nanodrops</legend>
-        <label>Faucet ID <span class="hint">(from nanodrops.org/api/faucets/&lt;id&gt;)</span>
+        <label>Faucet ID
           <input id="in-nanodrops-faucet" type="text" placeholder="e.g. a4552cef" />
         </label>
-        <label>Second faucet ID <span class="hint">(optional – e.g. a separate Kick/Twitch faucet)</span>
+        <label>Second faucet ID
           <input id="in-nanodrops-faucet-2" type="text" placeholder="leave blank to use just one" />
         </label>
-        <p class="hint">With both set, watcher counts are combined into one total. Faucet balance instead shows whichever faucet is currently online (the bigger of the two if both are online); drops and messages from either are merged into the same feed.</p>
         <label>Drop ticker decimal places
           <input id="in-drop-decimals" type="number" min="0" max="8" step="1" />
+        </label>
+        <label>Balance &amp; JUICED alert decimal places
+          <input id="in-xno-decimals" type="number" min="0" max="8" step="1" />
         </label>
         <p id="nanodrops-status" class="status">Not connected</p>
       </fieldset>
@@ -220,11 +215,13 @@
           <button type="button" id="btn-rebind-lock" class="rebind-btn">Control+Shift+L</button>
         </label>
         <p id="lock-shortcut-status" class="status"></p>
-        <label>Clear chat feed
-          <button type="button" id="btn-rebind-clear-chat" class="rebind-btn">Control+Shift+X</button>
+        <label>Clear chat
+          <button type="button" id="btn-rebind-clear-chat" class="rebind-btn">F21</button>
         </label>
         <p id="clear-chat-shortcut-status" class="status"></p>
-        <p class="hint">Click a button, then press the key combination you want. Ctrl+Shift+O always reopens this panel.</p>
+        <label>New-message grace period (seconds)
+          <input id="in-clear-grace" type="number" min="0" max="30" step="0.5" />
+        </label>
       </fieldset>
 
       <fieldset>
@@ -235,11 +232,13 @@
         <label>Background opacity
           <input id="in-bg-opacity" type="range" min="0" max="0.9" step="0.05" />
         </label>
+        <label>Top bar opacity
+          <input id="in-drag-bar-opacity" type="range" min="0" max="1" step="0.05" />
+        </label>
       </fieldset>
 
       <div class="settings-footer">
         <button id="btn-save" class="primary">Save &amp; reconnect</button>
-        <span class="hint">Ctrl+Shift+O reopens this panel from anywhere.</span>
       </div>
 
     </div>

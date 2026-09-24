@@ -15,5 +15,8 @@ contextBridge.exposeInMainWorld('overlay', {
   onStreamlabsStatus: (cb) => ipcRenderer.on('streamlabs-status', (_e, data) => cb(data)),
   onNanodropsData: (cb) => ipcRenderer.on('nanodrops-data', (_e, data) => cb(data)),
   onNanodropsStatus: (cb) => ipcRenderer.on('nanodrops-status', (_e, data) => cb(data)),
-  reconnectStreamlabs: () => ipcRenderer.invoke('reconnect-streamlabs')
+  reconnectStreamlabs: () => ipcRenderer.invoke('reconnect-streamlabs'),
+  // Called once the renderer has registered all its listeners, so main can
+  // replay any status it sent earlier, while the page was still loading.
+  rendererReady: () => ipcRenderer.invoke('renderer-ready')
 });

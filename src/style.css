@@ -1,15 +1,26 @@
 :root {
   --panel: 15, 14, 12;
   --bg-opacity: 0.45;
+  --drag-bar-opacity: 0.35;
   --ink: #f3efe7;
   --ink-muted: #b9b2a4;
   --hairline: rgba(255, 255, 255, 0.09);
   --accent-follow: #6fbf73;
   --accent-sub: #b98ce0;
+  --accent-giftedsub: #f2d24a;
   --accent-tip: #e8b23d;
-  --accent-kicks: #7ee02f;
+  /* Platform brand colors – used for every platform-specific alert
+     (follows, subs, gifted subs, Kicks tips). PayPal and nano keep their own. */
+  --accent-kick: #53FC18;
+  --accent-twitch: #9146FF;
+  --accent-raid: #f08a4b; /* only used when a raid's platform can't be told */
+  --accent-kicks: var(--accent-kick);
   --accent-paypal: #4ea6e0;
   --accent-nano: #1aace8;
+  --mute-mic: #ff3b3b;
+  --mute-desktop: #e8823d;
+  --live-platform-color: #53FC18;
+  --live-platform-glow: rgba(83, 252, 24, 0.7);
   --font-size: 16px;
   --font-stack: -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", sans-serif;
 }
@@ -49,21 +60,41 @@ body.window-focused {
   align-items: center;
   justify-content: space-between;
   padding: 0 6px 0 10px;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, var(--drag-bar-opacity));
   font-size: 12px;
   letter-spacing: 0.02em;
   color: var(--ink-muted);
+}
+
+/* Mic/desktop mute indicator: painted straight onto the top bar rather than
+   a separate meter element, since it only needs to change on an actual
+   mute toggle rather than doing any ongoing work. Mic takes precedence
+   over desktop when both are muted. */
+#drag-strip.muted-mic { background: var(--mute-mic); }
+#drag-strip.muted-desktop { background: var(--mute-desktop); }
+#drag-strip.muted-mic,
+#drag-strip.muted-desktop {
+  color: #fff;
+}
+#drag-strip.muted-mic #drag-actions button,
+#drag-strip.muted-desktop #drag-actions button {
+  color: #fff;
+}
+#drag-strip.muted-mic #drag-actions button:hover,
+#drag-strip.muted-desktop #drag-actions button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
 }
 
 #drag-status {
   pointer-events: none;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   font-variant-numeric: tabular-nums;
 }
 
-.live-indicator { display: flex; align-items: center; gap: 6px; }
+.live-indicator { display: flex; align-items: center; gap: 10px; } /* = #drag-status gap: dot is equidistant from clock and timer */
 .live-indicator.hidden { display: none; }
 
 .startup-loading { display: flex; align-items: center; gap: 6px; color: var(--ink-muted); }
@@ -87,14 +118,23 @@ body.window-focused {
 
 .drag-sep { opacity: 0.5; }
 
-.live-dot {
-  width: 7px;
-  height: 7px;
+/* Small neutral connector dot between the clock and the stream timer. */
+.live-sep {
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
-  background: #ff5656;
-  box-shadow: 0 0 4px rgba(255, 86, 86, 0.7);
+  background: currentColor;
+  opacity: 0.55;
   flex: 0 0 auto;
 }
+
+/* The stream timer takes the colour of the platform being streamed to
+   (--live-platform-color: Kick green / Twitch purple, set from pollStreamStatus). */
+#stream-uptime { color: var(--live-platform-color); }
+/* ...except while the bar is flashing a mute warning: that state is white text
+   on a solid colour, where green/purple would be hard to read. */
+#drag-strip.muted-mic #stream-uptime,
+#drag-strip.muted-desktop #stream-uptime { color: inherit; }
 
 #drag-actions {
   -webkit-app-region: no-drag;
@@ -172,7 +212,17 @@ body.window-focused {
 .icon-green { color: var(--accent-follow); }
 .icon-nano { color: var(--accent-nano); }
 .icon-status-live { color: var(--accent-follow); }
-.icon-status-muted { color: #ff5656; }
+.icon-status-muted { color: #000; }
+
+/* The per-faucet ("this stream's") nanodrops drop icon and the viewer count
+   icon track whichever platform is currently live. The $/hr rate, the pool
+   (total network) chip, and the watcher-count icon keep their normal
+   nano-blue/green colors. */
+#stat-viewers .icon-green,
+#stat-nd-faucet .icon-nano,
+#stat-nd-faucet .accent {
+  color: var(--live-platform-color);
+}
 
 .badges { display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; }
 .badge-icon-wrap { display: inline-flex; width: 13px; height: 13px; }
@@ -212,17 +262,21 @@ body.window-focused {
 #drop-ticker-track .amount { font-weight: 700; color: var(--accent-nano); }
 #drop-ticker-track .sep { opacity: 0.5; }
 
-/* ---------- feed + OBS volume meters ---------- */
+/* ---------- feed + mic meter ---------- */
 
+/* Row beneath the stats bar/drop ticker: chat feed on the left, the OBS mic
+   meter (when enabled) as its own fixed-width column on the right, so the
+   meter never overlaps or clips chat text – it just takes its own space and
+   the feed narrows to fit. */
 #content-row {
   flex: 1 1 auto;
   display: flex;
-  flex-direction: row;
-  min-height: 0; /* let #feed scroll instead of stretching the window */
+  min-height: 0;
 }
 
 #feed {
   flex: 1 1 auto;
+  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 8px 10px 12px;
@@ -231,53 +285,6 @@ body.window-focused {
   scrollbar-width: none;
 }
 #feed::-webkit-scrollbar { display: none; }
-
-/* Own column to the right of the feed, not interleaved with chat lines. */
-#obs-meters {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 7px;
-  padding: 8px 9px 10px 3px;
-}
-#obs-meters.hidden { display: none; }
-
-.meter-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  width: 10px;
-}
-.meter-col.hidden { display: none; }
-
-.meter-track {
-  flex: 1 1 auto;
-  width: 6px;
-  min-height: 40px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.12);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Anchored to the bottom and scaled rather than resized, so updates every
-   ~50ms (driven straight off OBS's own meter events) are cheap GPU-composited
-   transforms instead of layout-triggering height changes. */
-.meter-fill {
-  position: absolute;
-  inset: 0;
-  border-radius: 3px;
-  background: var(--accent-follow);
-  transform: scaleY(0);
-  transform-origin: bottom;
-  transition: transform 60ms linear, background-color 120ms linear;
-}
-.meter-fill.lvl-yellow { background: #e8c23d; }
-.meter-fill.lvl-red { background: #e0503d; }
-
-.meter-col .icon { color: var(--ink-muted); opacity: 0.8; flex: 0 0 auto; }
-
-/* ---------- feed lines ---------- */
 
 .line {
   position: relative;
@@ -298,6 +305,8 @@ body.window-focused {
 
 .line .user { font-weight: 600; }
 .line .msg { color: var(--ink); }
+/* Twitch /me lines: the text takes the chatter's colour (set inline) and is italic, like Twitch's own chat. */
+.line .msg.action { font-style: italic; }
 .line .amount { font-weight: 700; }
 .kick-emote, .twitch-emote {
   height: 1.4em;
@@ -318,16 +327,22 @@ body.window-focused {
 
 .line.chat { border-left-color: rgba(255, 255, 255, 0.18); }
 
+/* A Twitch chatter's very first message in the channel (first-msg=1). */
+.line.chat.first-msg { border-left-color: var(--accent-twitch); }
+.line .tag.tag-first { background: var(--accent-twitch); color: #fff; }
+
 .line.follow {
   border-left-color: var(--accent-follow);
   color: var(--accent-follow);
 }
 .line.follow .tag { background: var(--accent-follow); color: #08240b; }
 
-.line.sub, .line.giftedsub {
-  border-left-color: var(--accent-sub);
-}
-.line.sub .tag, .line.giftedsub .tag { background: var(--accent-sub); color: #23063f; }
+.line.sub { border-left-color: var(--accent-sub); }
+.line.sub .tag { background: var(--accent-sub); color: #23063f; }
+
+.line.giftedsub { border-left-color: var(--accent-giftedsub); }
+.line.giftedsub .tag { background: var(--accent-giftedsub); color: #3a2f00; }
+.line.giftedsub .amount { color: var(--accent-giftedsub); }
 
 .line.tip {
   border-left-color: var(--accent-tip);
@@ -338,10 +353,29 @@ body.window-focused {
 .line.tip-kicks { border-left-color: var(--accent-kicks); }
 .line.tip-kicks .tag { background: var(--accent-kicks); color: #0d2b00; }
 .line.tip-kicks .amount { color: var(--accent-kicks); }
+.line .level { color: var(--ink-muted); font-weight: 600; }
 
 .line.tip-paypal { border-left-color: var(--accent-paypal); }
 .line.tip-paypal .tag { background: var(--accent-paypal); color: #04203b; }
 .line.tip-paypal .amount { color: var(--accent-paypal); }
+
+.line.raid { border-left-color: var(--accent-raid); }
+.line.raid .tag { background: var(--accent-raid); color: #2e1400; }
+.line.raid .amount { color: var(--accent-raid); }
+
+/* Platform-specific alerts (follows, subs, gifted subs, bits, raids): the renderer adds
+   plat-kick / plat-twitch based on which platform Streamlabs says the alert
+   came from. Placed after the per-type rules above so it overrides their
+   default colors; alerts from any other source keep the per-type colors. */
+.line.plat-kick { border-left-color: var(--accent-kick); }
+.line.plat-kick .tag { background: var(--accent-kick); color: #0a2600; }
+.line.plat-kick .amount { color: var(--accent-kick); }
+.line.follow.plat-kick { color: var(--accent-kick); }
+
+.line.plat-twitch { border-left-color: var(--accent-twitch); }
+.line.plat-twitch .tag { background: var(--accent-twitch); color: #ffffff; }
+.line.plat-twitch .amount { color: var(--accent-twitch); }
+.line.follow.plat-twitch { color: var(--accent-twitch); }
 
 .line.nanotip { border-left-color: var(--accent-nano); }
 .line.nanotip .tag { background: var(--accent-nano); color: #01202e; }
