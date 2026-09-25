@@ -1607,10 +1607,10 @@ function handleNanodropsFaucets(faucets) {
     if (!platform) return;
     if (f.watchers != null) watchers[platform] = Number(f.watchers);
     if (f.balanceXno == null) return;
-    const balance = Number(f.balanceXno);
-    if (lastFaucetBalanceByPlatform[platform] == null || balance > lastFaucetBalanceByPlatform[platform]) {
-      lastFaucetBalanceByPlatform[platform] = balance;
-    }
+    // Always take this poll's balance as current - a faucet's balance falls
+    // as it pays out drops, so a "only update if higher" ratchet here used to
+    // freeze the display at its post-launch peak and never show a payout.
+    lastFaucetBalanceByPlatform[platform] = Number(f.balanceXno);
   });
   ndWatchersByPlatform = watchers;
   refreshFaucetBarPlacement();
