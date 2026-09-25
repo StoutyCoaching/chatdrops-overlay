@@ -138,7 +138,7 @@ body.window-focused {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-right: 8px;
+  margin-right: 2px;
 }
 
 #drag-obs-status .stat.hidden { display: none; }
