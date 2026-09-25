@@ -2326,6 +2326,9 @@ document.getElementById('btn-save').addEventListener('click', async () => {
 
   settings = await overlay.setSettings(patch);
   applyAppearance(settings);
+  // Re-place faucet chips immediately using the new setting/current live
+  // status, rather than waiting for the next poll to catch up.
+  refreshFaucetBarPlacement();
 
   // Switching nanodrops off stops the polling, so nothing would ever come
   // along to hide its chips and ticker – do it here.

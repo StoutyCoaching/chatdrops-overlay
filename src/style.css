@@ -152,6 +152,12 @@ body.window-focused {
 }
 
 #drag-obs-status .stat.hidden { display: none; }
+/* The drag-bar faucet chips (offline balance) live directly under
+   #drag-status, not #drag-obs-status - without this they were never
+   actually hidden by the .hidden class the JS toggles (setDragFaucetStat),
+   so a balance could keep showing there regardless of the "show offline
+   faucet balance" setting or whether the platform was live. */
+#drag-status .stat.hidden { display: none; }
 #drag-obs-status .icon { vertical-align: -1px; }
 
 #drag-actions button {
@@ -206,10 +212,19 @@ body.window-focused {
 
 /* Viewer chips: pull the head icon in against the count (to sit as close as
    the $ does to the rate value) and pull the "/N" nanodrops-watcher suffix
-   in against the count the same way, instead of the wider default .stat gap. */
+   in against the count the same way, instead of the wider default .stat gap.
+   The head icon also gets a small vertical nudge here: .stat is a flex
+   container (align-items: center), so the .icon rule's vertical-align below
+   has no effect on it - the icon needs its own relative offset to sit level
+   with the digits instead of reading a couple pixels high. */
 #stat-viewers-kick,
 #stat-viewers-twitch {
   gap: 2px;
+}
+#stat-viewers-kick .icon,
+#stat-viewers-twitch .icon {
+  position: relative;
+  top: 1px;
 }
 
 .rate-text { color: var(--ink); font-weight: 700; }
