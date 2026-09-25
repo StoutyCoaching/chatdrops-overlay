@@ -148,6 +148,7 @@ function populateSettingsForm(s) {
   document.getElementById('chk-nanodrops').checked = !!s.showNanodrops;
   document.getElementById('in-nanodrops-faucet').value = s.nanodropsFaucetId || '';
   document.getElementById('in-nanodrops-faucet-2').value = s.nanodropsFaucetId2 || '';
+  document.getElementById('chk-nanodrops-show-offline').checked = !!s.showOfflineFaucets;
   document.getElementById('in-drop-decimals').value = s.dropDecimals != null ? s.dropDecimals : 4;
   document.getElementById('in-xno-decimals').value = s.xnoDecimals != null ? s.xnoDecimals : 2;
   document.getElementById('chk-obs').checked = !!s.obsEnabled;
@@ -1457,25 +1458,19 @@ function handleNanodropsDrops(drops, baselineFaucets) {
   }
 }
 
-// Maps a nanodrops faucet id back to which stream it belongs to. With both
-// faucet IDs set, the first box (Twitch Faucet ID) is Twitch's and the second
-// (Kick Faucet ID) is Kick's - to swap them, swap the two entries below.
-// With only one faucet set there's nothing to tell apart, so it takes the
-// colour of whichever platform is live (Kick if both are, Kick if neither).
-// Returns 'kick', 'twitch', or null if the id matches neither box (e.g. it
-// was just changed in settings and this message predates the change).
+// Maps a nanodrops faucet id back to which stream it belongs to: the box it's
+// typed into decides its platform, permanently - the first box (Twitch
+// Faucet ID) is always Twitch's, the second (Kick Faucet ID) is always
+// Kick's, regardless of which stream is currently live. With only one box
+// filled in, that one faucet just always shows as whichever platform's box
+// holds it. Returns 'kick', 'twitch', or null if the id matches neither box
+// (e.g. it was just changed in settings and this message predates the change).
 const FAUCET_SLOT_PLATFORMS = ['twitch', 'kick']; // [first box, second box]
 function faucetPlatformFor(faucetId) {
   if (!faucetId) return null;
-  const first = settings.nanodropsFaucetId;
-  const second = settings.nanodropsFaucetId2;
-  if (first && second) {
-    if (faucetId === first) return FAUCET_SLOT_PLATFORMS[0];
-    if (faucetId === second) return FAUCET_SLOT_PLATFORMS[1];
-    return null;
-  }
-  if (faucetId !== first && faucetId !== second) return null;
-  return liveState.kick.live || !liveState.twitch.live ? 'kick' : 'twitch';
+  if (faucetId === settings.nanodropsFaucetId) return FAUCET_SLOT_PLATFORMS[0];
+  if (faucetId === settings.nanodropsFaucetId2) return FAUCET_SLOT_PLATFORMS[1];
+  return null;
 }
 
 function handleNanodropsMessages(messages, baselineFaucets) {
@@ -1545,14 +1540,17 @@ function handleNanodropsData(data) {
   newlyBaselined.forEach((id) => baselinedFaucets.add(id));
 }
 
-// One balance chip per platform (Kick green / Twitch purple), so both faucets
-// show when both are set up. As before, a faucet whose stream is offline
-// leaves its balance out; a faucet with no reported status counts as online.
-// Should two faucets somehow resolve to the same platform, the bigger balance wins.
+// One balance chip per platform (Kick green / Twitch purple) - a faucet
+// always belongs to the same platform (whichever box its ID is typed into,
+// see faucetPlatformFor), so both chips show together whenever both faucets
+// are configured and live. A faucet whose stream is offline leaves its
+// balance out unless "Show faucet balance while stream is offline" is turned
+// on in settings; a faucet with no reported status counts as online.
 function handleNanodropsFaucets(faucets) {
   const best = { kick: null, twitch: null };
   (Array.isArray(faucets) ? faucets : []).forEach((f) => {
-    if (!f || f.online === false || f.balanceXno == null) return;
+    if (!f || f.balanceXno == null) return;
+    if (f.online === false && !settings.showOfflineFaucets) return;
     const platform = faucetPlatformFor(f.id);
     if (!platform) return;
     const balance = Number(f.balanceXno);
@@ -2204,6 +2202,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     showNanodrops: document.getElementById('chk-nanodrops').checked,
     nanodropsFaucetId: document.getElementById('in-nanodrops-faucet').value.trim(),
     nanodropsFaucetId2: document.getElementById('in-nanodrops-faucet-2').value.trim(),
+    showOfflineFaucets: document.getElementById('chk-nanodrops-show-offline').checked,
     dropDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-drop-decimals').value) || 0)),
     xnoDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-xno-decimals').value) || 0)),
     obsEnabled: document.getElementById('chk-obs').checked,

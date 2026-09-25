@@ -36,6 +36,7 @@ const store = new Store({
     showNanodrops: true,
     nanodropsFaucetId: 'a4552cef',
     nanodropsFaucetId2: '',
+    showOfflineFaucets: false,
     dropDecimals: 4,
     xnoDecimals: 2,
     obsEnabled: false,
