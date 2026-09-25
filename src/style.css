@@ -92,7 +92,7 @@ body.window-focused {
   font-variant-numeric: tabular-nums;
 }
 
-.live-indicator { display: flex; align-items: center; gap: 10px; } /* = #drag-status gap: dot is equidistant from clock and timer */
+.live-indicator { display: flex; align-items: center; gap: 10px; } /* = #drag-status gap: timer is equidistant from clock as from the next stream's timer */
 .live-indicator.hidden { display: none; }
 
 .startup-loading { display: flex; align-items: center; gap: 6px; color: var(--ink-muted); }
@@ -115,16 +115,6 @@ body.window-focused {
 }
 
 .drag-sep { opacity: 0.5; }
-
-/* Small neutral connector dot between the clock and the stream timer. */
-.live-sep {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.55;
-  flex: 0 0 auto;
-}
 
 /* Each stream timer takes its own platform's colour: Kick green / Twitch
    purple. When both streams are live both timers show side by side. */
@@ -152,6 +142,13 @@ body.window-focused {
 }
 
 #drag-obs-status .stat.hidden { display: none; }
+/* The mic icon's shape sits with a bit more visual padding on its right side
+   than the speaker/camera icons do on theirs, so the equal 8px flex gap here
+   reads as a wider mic -> desktop-audio gap than desktop-audio -> webcam.
+   Pull just that one gap in to compensate, without touching the others. */
+#drag-obs-desktop {
+  margin-left: -2px;
+}
 /* The drag-bar faucet chips (offline balance) live directly under
    #drag-status, not #drag-obs-status - without this they were never
    actually hidden by the .hidden class the JS toggles (setDragFaucetStat),
