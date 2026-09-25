@@ -204,12 +204,19 @@ body.window-focused {
 .stat { display: inline-flex; align-items: center; gap: 5px; }
 .stat span[id$="-value"], .stat span[id$="-balance"], .stat span[id$="-viewers"] { color: var(--ink); font-weight: 700; }
 
+/* Viewer chips: pull the head icon in against the count (to sit as close as
+   the $ does to the rate value) and pull the "/N" nanodrops-watcher suffix
+   in against the count the same way, instead of the wider default .stat gap. */
+#stat-viewers-kick,
+#stat-viewers-twitch {
+  gap: 2px;
+}
+
 .rate-text { color: var(--ink); font-weight: 700; }
 .accent { color: var(--accent-nano); }
 
 .icon { display: inline-block; vertical-align: -2px; }
 .icon-green { color: var(--accent-follow); }
-.icon-nano { color: var(--accent-nano); }
 .icon-status-live { color: var(--accent-follow); }
 .icon-status-muted { color: #000; }
 
@@ -218,24 +225,23 @@ body.window-focused {
    Each viewer chip also carries its platform's nanodrops watcher count as a
    "/N" suffix in nano-blue (see #stat-viewers-kick-nd etc). The $/hr rate and
    the pool (total network) chip keep their normal nano-blue/green colors.
+   No per-chip icon is needed - the colouring alone is unambiguous.
    An offline platform's faucet balance (when "Show faucet balance while
-   stream is offline" is on) uses the same drop icon/platform colouring but
-   lives in #drag-status instead - its amount has no "-value"/"-balance"/
-   "-viewers" id suffix, so it inherits the drag bar's own muted colour
-   rather than the bold white below, and moves down here once live. */
+   stream is offline" is on) uses the same platform colouring but lives in
+   #drag-status instead - its amount has no "-value"/"-balance"/"-viewers"
+   id suffix, so it inherits the drag bar's own muted colour rather than the
+   bold white below, and moves down here once live. */
 .icon-kick { color: var(--accent-kick); }
 .icon-twitch { color: var(--accent-twitch); }
 .stat-faucet-kick .accent { color: var(--accent-kick); }
 .stat-faucet-twitch .accent { color: var(--accent-twitch); }
 
-/* The drag-bar faucet chip (offline balance) reuses the same drop icon and
-   platform/nano-accent colouring as its live stats-bar counterpart above,
+/* The drag-bar faucet chip (offline balance) reuses the same platform/
+   nano-accent colouring as its live stats-bar counterpart above,
    but dimmed to match the drag bar's muted look - only its amount digits
    (no explicit color, inherited from #drag-strip) are left at full opacity,
    same as the rest of that bar's text. */
-#drag-nd-faucet-kick .icon,
 #drag-nd-faucet-kick .accent,
-#drag-nd-faucet-twitch .icon,
 #drag-nd-faucet-twitch .accent {
   opacity: 0.55;
 }

@@ -1020,6 +1020,7 @@ async function pollStreamStatus({ force = false } = {}) {
     lastPlatformViewers.twitch = { live: false, viewers: null };
     document.getElementById('stat-viewers-kick').classList.add('hidden');
     document.getElementById('stat-viewers-twitch').classList.add('hidden');
+    refreshFaucetBarPlacement();
     markLoadDone('kick');
     return;
   }
@@ -1071,6 +1072,7 @@ async function runStreamStatusPoll(token, hasKick, hasTwitch) {
   lastPlatformViewers.kick = { live: kickLive, viewers: kick.viewers };
   lastPlatformViewers.twitch = { live: twitchLive, viewers: twitch.viewers };
   renderViewerChips();
+  refreshFaucetBarPlacement();
 
   markLoadDone('kick');
 }
@@ -1578,6 +1580,15 @@ function handleNanodropsData(data) {
   newlyBaselined.forEach((id) => baselinedFaucets.add(id));
 }
 
+// Last known faucet balance per platform, independent of live/offline
+// placement. Populated whenever a nanodrops poll delivers a fresh balance,
+// and re-read by refreshFaucetBarPlacement() whenever a platform's live
+// status changes (see pollStreamStatus) so the chip jumps to the right bar
+// immediately instead of waiting for the next nanodrops poll to catch up -
+// that lag was why a platform's faucet balance could still show in the
+// (offline-only) drag bar for a few seconds after it went live.
+const lastFaucetBalanceByPlatform = { kick: null, twitch: null };
+
 // One balance chip per platform (Kick green / Twitch purple) - a faucet
 // always belongs to the same platform (whichever box its ID is typed into,
 // see faucetPlatformFor). While that platform is live, its balance shows in
@@ -1589,8 +1600,6 @@ function handleNanodropsData(data) {
 // Also updates each platform's nanodrops watcher count, shown as the "/N"
 // suffix on that platform's viewer chip (see renderViewerChips).
 function handleNanodropsFaucets(faucets) {
-  const statsBarBalance = { kick: null, twitch: null };
-  const dragBarBalance = { kick: null, twitch: null };
   const watchers = { kick: null, twitch: null };
   (Array.isArray(faucets) ? faucets : []).forEach((f) => {
     if (!f) return;
@@ -1599,18 +1608,29 @@ function handleNanodropsFaucets(faucets) {
     if (f.watchers != null) watchers[platform] = Number(f.watchers);
     if (f.balanceXno == null) return;
     const balance = Number(f.balanceXno);
-    if (lastPlatformViewers[platform].live) {
-      if (statsBarBalance[platform] == null || balance > statsBarBalance[platform]) statsBarBalance[platform] = balance;
-    } else if (settings.showOfflineFaucets) {
-      if (dragBarBalance[platform] == null || balance > dragBarBalance[platform]) dragBarBalance[platform] = balance;
+    if (lastFaucetBalanceByPlatform[platform] == null || balance > lastFaucetBalanceByPlatform[platform]) {
+      lastFaucetBalanceByPlatform[platform] = balance;
     }
   });
-  ['kick', 'twitch'].forEach((platform) => {
-    setNanodropsStat(`stat-nd-faucet-${platform}`, statsBarBalance[platform] != null, fmtXno(statsBarBalance[platform]));
-    setDragFaucetStat(platform, dragBarBalance[platform]);
-  });
   ndWatchersByPlatform = watchers;
+  refreshFaucetBarPlacement();
   renderViewerChips();
+}
+
+// Puts each platform's cached faucet balance (see lastFaucetBalanceByPlatform)
+// in the right place for its current live status: live -> stats bar, offline
+// -> drag bar (only if "Show faucet balance while stream is offline" is on),
+// otherwise hidden. Called after every nanodrops poll AND right after a
+// platform's live status changes, so a chip never lingers in the wrong bar.
+function refreshFaucetBarPlacement() {
+  ['kick', 'twitch'].forEach((platform) => {
+    const balance = lastFaucetBalanceByPlatform[platform];
+    const live = lastPlatformViewers[platform].live;
+    const statsBalance = live ? balance : null;
+    const dragBalance = !live && settings.showOfflineFaucets ? balance : null;
+    setNanodropsStat(`stat-nd-faucet-${platform}`, statsBalance != null, fmtXno(statsBalance));
+    setDragFaucetStat(platform, dragBalance);
+  });
 }
 
 // The drag-bar counterpart of the stats-bar faucet chip above: same icon and
