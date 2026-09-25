@@ -783,6 +783,60 @@ const liveState = {
 let lastKickStartRaw = null; // last raw start_time/created_at string from Kick, for diagnostics
 let lastTwitchStartRaw = null; // last raw createdAt string from Twitch, for diagnostics
 
+// Latest known per-platform viewer count/liveness, refreshed on every stream
+// status poll. Kept here (not just inside that poll) so a nanodrops watcher
+// update alone can redraw the viewer chips without waiting on the next one.
+const lastPlatformViewers = {
+  kick: { live: false, viewers: null },
+  twitch: { live: false, viewers: null }
+};
+
+// Nanodrops watcher counts, split by platform the same way faucet balances
+// are (see faucetPlatformFor) - refreshed on every nanodrops poll.
+let ndWatchersByPlatform = { kick: null, twitch: null };
+
+// One viewer chip per live platform (both when both are live), each showing
+// that platform's own viewer count in white. When nanodrops has a watcher
+// count for that platform's faucet, it's appended as "/N" in nano-blue, so a
+// multistreamed viewer can see both platforms' nanodrops audiences at once.
+// When neither platform is live, a single chip reads "offline" - Kick's,
+// unless only Twitch is set up.
+function renderViewerChips() {
+  const kickChip = document.getElementById('stat-viewers-kick');
+  const twitchChip = document.getElementById('stat-viewers-twitch');
+  if (!kickChip || !twitchChip) return;
+  if (!settings.showViewerCount) {
+    kickChip.classList.add('hidden');
+    twitchChip.classList.add('hidden');
+    return;
+  }
+  const hasKick = !!settings.kickChannel;
+  const hasTwitch = !!settings.twitchChannel;
+  const kickLive = lastPlatformViewers.kick.live;
+  const twitchLive = lastPlatformViewers.twitch.live;
+  const anyLive = kickLive || twitchLive;
+  const showKick = kickLive || (!anyLive && (hasKick || !hasTwitch));
+  const showTwitch = twitchLive || (!anyLive && !showKick);
+
+  const fill = (platform, chip, live, viewers) => {
+    document.getElementById(`${chip.id}-value`).textContent =
+      live ? (viewers != null ? fmtViewers(viewers) : '–') : 'offline';
+    const ndEl = document.getElementById(`${chip.id}-nd`);
+    if (!ndEl) return;
+    const ndViewers = live && settings.showNanodrops ? ndWatchersByPlatform[platform] : null;
+    if (ndViewers != null) {
+      ndEl.textContent = `/${fmtViewers(ndViewers)}`;
+      ndEl.classList.remove('hidden');
+    } else {
+      ndEl.classList.add('hidden');
+    }
+  };
+  kickChip.classList.toggle('hidden', !showKick);
+  twitchChip.classList.toggle('hidden', !showTwitch);
+  if (showKick) fill('kick', kickChip, kickLive, lastPlatformViewers.kick.viewers);
+  if (showTwitch) fill('twitch', twitchChip, twitchLive, lastPlatformViewers.twitch.viewers);
+}
+
 // A platform's timer shows only while it's live AND its "Display ... live
 // timer" setting is on (both default to on).
 function timerVisible(platform) {
@@ -962,6 +1016,8 @@ async function pollStreamStatus({ force = false } = {}) {
   if (!hasKick && !hasTwitch) {
     liveState.kick = { live: false, start: null };
     liveState.twitch = { live: false, start: null };
+    lastPlatformViewers.kick = { live: false, viewers: null };
+    lastPlatformViewers.twitch = { live: false, viewers: null };
     document.getElementById('stat-viewers-kick').classList.add('hidden');
     document.getElementById('stat-viewers-twitch').classList.add('hidden');
     markLoadDone('kick');
@@ -1012,26 +1068,9 @@ async function runStreamStatusPoll(token, hasKick, hasTwitch) {
   liveState.kick = { live: kickLive, start: kickLive ? kick.start : null };
   liveState.twitch = { live: twitchLive, start: twitchLive ? twitch.start : null };
 
-  // One viewer chip per live platform (both when both are live). When neither
-  // is live a single chip reads "offline" - Kick's, unless only Twitch is set up.
-  const kickChip = document.getElementById('stat-viewers-kick');
-  const twitchChip = document.getElementById('stat-viewers-twitch');
-  if (settings.showViewerCount) {
-    const anyLive = kickLive || twitchLive;
-    const showKick = kickLive || (!anyLive && (hasKick || !hasTwitch));
-    const showTwitch = twitchLive || (!anyLive && !showKick);
-    const fill = (chip, live, viewers) => {
-      document.getElementById(`${chip.id}-value`).textContent =
-        live ? (viewers != null ? fmtViewers(viewers) : '–') : 'offline';
-    };
-    kickChip.classList.toggle('hidden', !showKick);
-    twitchChip.classList.toggle('hidden', !showTwitch);
-    if (showKick) fill(kickChip, kickLive, kick.viewers);
-    if (showTwitch) fill(twitchChip, twitchLive, twitch.viewers);
-  } else {
-    kickChip.classList.add('hidden');
-    twitchChip.classList.add('hidden');
-  }
+  lastPlatformViewers.kick = { live: kickLive, viewers: kick.viewers };
+  lastPlatformViewers.twitch = { live: twitchLive, viewers: twitch.viewers };
+  renderViewerChips();
 
   markLoadDone('kick');
 }
@@ -1527,7 +1566,6 @@ function handleNanodropsMessages(messages, baselineFaucets) {
 
 function handleNanodropsData(data) {
   if (!data) return;
-  setNanodropsStat('stat-nd-watchers', data.streamWatchers != null, String(data.streamWatchers));
   setNanodropsStat('stat-nd-rate', data.hourlyRateUsd != null, fmtUsd(data.hourlyRateUsd));
   handleNanodropsFaucets(data.faucets);
   handleNanodropsPool(data.networkActiveNanoXno, data.networkActiveUsers);
@@ -1542,23 +1580,52 @@ function handleNanodropsData(data) {
 
 // One balance chip per platform (Kick green / Twitch purple) - a faucet
 // always belongs to the same platform (whichever box its ID is typed into,
-// see faucetPlatformFor), so both chips show together whenever both faucets
-// are configured and live. A faucet whose stream is offline leaves its
-// balance out unless "Show faucet balance while stream is offline" is turned
-// on in settings; a faucet with no reported status counts as online.
+// see faucetPlatformFor). While that platform is live, its balance shows in
+// the live stats bar below, same as always. While it's offline, the balance
+// is left out entirely unless "Show faucet balance while stream is offline"
+// is on - in which case it shows up muted in the top drag bar instead (see
+// setDragFaucetStat), and moves down into the stats bar the moment that
+// platform goes live.
+// Also updates each platform's nanodrops watcher count, shown as the "/N"
+// suffix on that platform's viewer chip (see renderViewerChips).
 function handleNanodropsFaucets(faucets) {
-  const best = { kick: null, twitch: null };
+  const statsBarBalance = { kick: null, twitch: null };
+  const dragBarBalance = { kick: null, twitch: null };
+  const watchers = { kick: null, twitch: null };
   (Array.isArray(faucets) ? faucets : []).forEach((f) => {
-    if (!f || f.balanceXno == null) return;
-    if (f.online === false && !settings.showOfflineFaucets) return;
+    if (!f) return;
     const platform = faucetPlatformFor(f.id);
     if (!platform) return;
+    if (f.watchers != null) watchers[platform] = Number(f.watchers);
+    if (f.balanceXno == null) return;
     const balance = Number(f.balanceXno);
-    if (best[platform] == null || balance > best[platform]) best[platform] = balance;
+    if (lastPlatformViewers[platform].live) {
+      if (statsBarBalance[platform] == null || balance > statsBarBalance[platform]) statsBarBalance[platform] = balance;
+    } else if (settings.showOfflineFaucets) {
+      if (dragBarBalance[platform] == null || balance > dragBarBalance[platform]) dragBarBalance[platform] = balance;
+    }
   });
   ['kick', 'twitch'].forEach((platform) => {
-    setNanodropsStat(`stat-nd-faucet-${platform}`, best[platform] != null, fmtXno(best[platform]));
+    setNanodropsStat(`stat-nd-faucet-${platform}`, statsBarBalance[platform] != null, fmtXno(statsBarBalance[platform]));
+    setDragFaucetStat(platform, dragBarBalance[platform]);
   });
+  ndWatchersByPlatform = watchers;
+  renderViewerChips();
+}
+
+// The drag-bar counterpart of the stats-bar faucet chip above: same icon and
+// platform colouring, but its amount has no "-value" id suffix, so it picks
+// up the drag bar's own muted colour (see the CSS comment above) instead of
+// the bold white the live stats bar uses.
+function setDragFaucetStat(platform, balanceXno) {
+  const chip = document.getElementById(`drag-nd-faucet-${platform}`);
+  if (!chip) return;
+  if (balanceXno == null) {
+    chip.classList.add('hidden');
+    return;
+  }
+  document.getElementById(`drag-nd-faucet-${platform}-amount`).innerHTML = fmtXno(balanceXno);
+  chip.classList.remove('hidden');
 }
 
 function handleNanodropsPool(balanceXno, viewers) {
@@ -1577,8 +1644,12 @@ function handleNanodropsPool(balanceXno, viewers) {
 }
 
 function hideNanodropsChips() {
-  ['stat-nd-watchers', 'stat-nd-rate', 'stat-nd-faucet-kick', 'stat-nd-faucet-twitch', 'stat-nd-pool']
+  ['stat-nd-rate', 'stat-nd-faucet-kick', 'stat-nd-faucet-twitch', 'stat-nd-pool']
     .forEach((id) => document.getElementById(id)?.classList.add('hidden'));
+  ['drag-nd-faucet-kick', 'drag-nd-faucet-twitch']
+    .forEach((id) => document.getElementById(id)?.classList.add('hidden'));
+  ndWatchersByPlatform = { kick: null, twitch: null };
+  renderViewerChips();
 }
 
 let nanodropsDown = false;

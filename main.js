@@ -396,12 +396,6 @@ async function pollNanodrops({ force = false } = {}) {
     // poll's, or (for up to NANODROPS_MAX_STALE_POLLS failures) its last good.
     const faucetData = faucets.map(({ src }) => src.data).filter(Boolean);
 
-    // Watchers are genuinely per-faucet numbers, so they're summed into one
-    // combined total when both are set; hourly rate and network pool stats
-    // already come from the shared /api/stats endpoint (not faucet-specific),
-    // so there's nothing to combine there.
-    const watcherValues = faucetData.map((d) => d.watchers).filter((v) => v != null);
-
     // Faucet balance: only faucets whose stream is currently online count.
     // If a faucet is offline, its balance is left out entirely – if the
     // other one is online, only that one's balance shows; if both are
@@ -429,13 +423,12 @@ async function pollNanodrops({ force = false } = {}) {
     }
 
     sendToRenderer('nanodrops-data', {
-      streamWatchers: watcherValues.length ? watcherValues.reduce((a, b) => a + Number(b), 0) : null,
       faucetBalanceXno,
       // Every faucet's own balance/online status, so the overlay can show one
       // chip per platform instead of just the larger of the two.
       faucets: faucets
         .filter(({ src }) => src.data)
-        .map(({ id, src }) => ({ id, balanceXno: src.data.balanceXno, online: src.data.online })),
+        .map(({ id, src }) => ({ id, balanceXno: src.data.balanceXno, online: src.data.online, watchers: src.data.watchers })),
       hourlyRateUsd: stats ? stats.hourlyRateUsd : null,
       networkActiveUsers: stats ? stats.activeUsers : null,
       networkActiveNanoXno: stats ? stats.activeNanoXno : null,

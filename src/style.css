@@ -215,12 +215,30 @@ body.window-focused {
 
 /* Viewer-count and per-faucet chips are coloured by platform: Kick green,
    Twitch purple (one chip per platform, so both show when both are live).
-   The $/hr rate, the pool (total network) chip, and the watcher-count icon
-   keep their normal nano-blue/green colors. */
+   Each viewer chip also carries its platform's nanodrops watcher count as a
+   "/N" suffix in nano-blue (see #stat-viewers-kick-nd etc). The $/hr rate and
+   the pool (total network) chip keep their normal nano-blue/green colors.
+   An offline platform's faucet balance (when "Show faucet balance while
+   stream is offline" is on) uses the same drop icon/platform colouring but
+   lives in #drag-status instead - its amount has no "-value"/"-balance"/
+   "-viewers" id suffix, so it inherits the drag bar's own muted colour
+   rather than the bold white below, and moves down here once live. */
 .icon-kick { color: var(--accent-kick); }
 .icon-twitch { color: var(--accent-twitch); }
 .stat-faucet-kick .accent { color: var(--accent-kick); }
 .stat-faucet-twitch .accent { color: var(--accent-twitch); }
+
+/* The drag-bar faucet chip (offline balance) reuses the same drop icon and
+   platform/nano-accent colouring as its live stats-bar counterpart above,
+   but dimmed to match the drag bar's muted look - only its amount digits
+   (no explicit color, inherited from #drag-strip) are left at full opacity,
+   same as the rest of that bar's text. */
+#drag-nd-faucet-kick .icon,
+#drag-nd-faucet-kick .accent,
+#drag-nd-faucet-twitch .icon,
+#drag-nd-faucet-twitch .accent {
+  opacity: 0.55;
+}
 
 .badges { display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; }
 .badge-icon-wrap { display: inline-flex; width: 13px; height: 13px; }

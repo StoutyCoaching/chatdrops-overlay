@@ -69,6 +69,12 @@
         <span class="live-sep"></span>
         <span id="stream-uptime-twitch" class="stream-uptime stream-uptime-twitch">00:00</span>
       </span>
+      <span id="drag-nd-faucet-kick" class="stat stat-faucet stat-faucet-kick hidden">
+        <svg class="icon icon-kick" width="12" height="12" fill="currentColor"><use href="#icon-drop"></use></svg><span id="drag-nd-faucet-kick-amount">–</span>
+      </span>
+      <span id="drag-nd-faucet-twitch" class="stat stat-faucet stat-faucet-twitch hidden">
+        <svg class="icon icon-twitch" width="12" height="12" fill="currentColor"><use href="#icon-drop"></use></svg><span id="drag-nd-faucet-twitch-amount">–</span>
+      </span>
     </span>
     <div id="drag-actions">
       <span id="drag-obs-status">
@@ -90,13 +96,10 @@
 
   <div id="stats-bar">
     <span id="stat-viewers-kick" class="stat hidden">
-      <svg class="icon icon-kick" width="13" height="13" fill="currentColor"><use href="#icon-head"></use></svg><span id="stat-viewers-kick-value">–</span>
+      <svg class="icon icon-kick" width="13" height="13" fill="currentColor"><use href="#icon-head"></use></svg><span id="stat-viewers-kick-value">–</span><span id="stat-viewers-kick-nd" class="accent hidden">/–</span>
     </span>
     <span id="stat-viewers-twitch" class="stat hidden">
-      <svg class="icon icon-twitch" width="13" height="13" fill="currentColor"><use href="#icon-head"></use></svg><span id="stat-viewers-twitch-value">–</span>
-    </span>
-    <span id="stat-nd-watchers" class="stat hidden">
-      <svg class="icon icon-nano" width="13" height="13" fill="currentColor"><use href="#icon-head"></use></svg><span id="stat-nd-watchers-value">–</span>
+      <svg class="icon icon-twitch" width="13" height="13" fill="currentColor"><use href="#icon-head"></use></svg><span id="stat-viewers-twitch-value">–</span><span id="stat-viewers-twitch-nd" class="accent hidden">/–</span>
     </span>
     <span id="stat-nd-rate" class="stat hidden">
       <span class="rate-text"><span class="accent">$</span><span id="stat-nd-rate-value">–</span><span class="accent">/hr</span></span>
