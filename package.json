@@ -1,6 +1,6 @@
 {
   "name": "kick-stream-overlay",
-  "version": "1.0.51",
+  "version": "1.0.52",
   "description": "Transparent always-on-top Kick chat + Streamlabs alert overlay for single-monitor streaming",
   "main": "main.js",
   "author": "Stouty",

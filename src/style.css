@@ -206,6 +206,10 @@ body.window-focused {
 
 .stat { display: inline-flex; align-items: center; gap: 5px; }
 .stat span[id$="-value"], .stat span[id$="-balance"], .stat span[id$="-viewers"] { color: var(--ink); font-weight: 700; }
+/* The pool chip's viewer count (and its "/" separator) breaks from the bold-white
+   rule above: it's the total nanodrops-watcher figure, so it matches the
+   nano-blue "/N" suffix used on the per-platform viewer chips instead. */
+#stat-nd-pool-viewers { color: var(--accent-nano); font-weight: 600; }
 
 /* Viewer chips: pull the head icon in against the count (to sit as close as
    the $ does to the rate value) and pull the "/N" nanodrops-watcher suffix
