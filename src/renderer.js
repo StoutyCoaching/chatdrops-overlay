@@ -134,6 +134,7 @@ function populateSettingsForm(s) {
   document.getElementById('in-twitch-channel').value = s.twitchChannel || '';
   document.getElementById('chk-kick-platform-color').checked = !!s.kickForcePlatformColor;
   document.getElementById('chk-twitch-platform-color').checked = !!s.twitchForcePlatformColor;
+  document.getElementById('in-max-badges').value = s.maxBadges != null ? s.maxBadges : 3;
   document.getElementById('in-streamlabs-token').value = s.streamlabsToken || '';
   document.getElementById('chk-chat').checked = !!s.showChat;
   document.getElementById('chk-follows').checked = !!s.showFollows;
@@ -190,9 +191,11 @@ const KICK_BRAND_GREEN = '#53FC18';
 const TWITCH_BRAND_PURPLE = '#9146FF';
 const DEFAULT_CHAT_COLOR = '#E0DCCF';
 
-// Badge types Kick sends on sender.identity.badges. Unknown/future types
+// Badge types Kick and Twitch send on a message's badge list (Kick:
+// sender.identity.badges; Twitch: the IRC badges tag). Unknown/future types
 // (e.g. staff, sub_gifter, trusted_user) are silently skipped rather than
-// showing a broken icon.
+// showing a broken icon. Twitch's "partner" reuses the same checkmark icon
+// as Kick's "verified" - both mean "official/verified channel".
 const BADGE_ICONS = {
   broadcaster: 'icon-badge-broadcaster',
   moderator: 'icon-badge-moderator',
@@ -200,14 +203,17 @@ const BADGE_ICONS = {
   og: 'icon-badge-og',
   founder: 'icon-badge-founder',
   subscriber: 'icon-badge-subscriber',
-  verified: 'icon-badge-verified'
+  verified: 'icon-badge-verified',
+  partner: 'icon-badge-verified'
 };
 
 function renderBadges(badges) {
   if (!Array.isArray(badges) || badges.length === 0) return '';
+  const maxBadges = settings.maxBadges != null ? settings.maxBadges : 3;
   const icons = badges
     .map((b) => BADGE_ICONS[b && b.type])
     .filter(Boolean)
+    .slice(0, maxBadges)
     .map((id) => {
       const type = id.replace('icon-badge-', '');
       // Tries a local badge image first (assets/badges/<type>.png, dropped in
@@ -2279,6 +2285,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     twitchChannel: normalizeChannelName(document.getElementById('in-twitch-channel').value),
     kickForcePlatformColor: document.getElementById('chk-kick-platform-color').checked,
     twitchForcePlatformColor: document.getElementById('chk-twitch-platform-color').checked,
+    maxBadges: Math.max(0, Math.min(10, Number(document.getElementById('in-max-badges').value) || 0)),
     streamlabsToken: document.getElementById('in-streamlabs-token').value.trim(),
     showChat: document.getElementById('chk-chat').checked,
     showFollows: document.getElementById('chk-follows').checked,

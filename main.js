@@ -20,6 +20,7 @@ const store = new Store({
     twitchChannel: '',
     kickForcePlatformColor: false,
     twitchForcePlatformColor: false,
+    maxBadges: 3,
     fontSize: 16,
     bgOpacity: 0.45,
     dragBarOpacity: 0.35,
