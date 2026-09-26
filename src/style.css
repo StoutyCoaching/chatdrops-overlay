@@ -212,15 +212,23 @@ body.window-focused {
 #stat-nd-pool-viewers { color: var(--accent-nano); font-weight: 600; }
 
 /* Viewer chips: pull the head icon in against the count (to sit as close as
-   the $ does to the rate value) and pull the "/N" nanodrops-watcher suffix
-   in against the count the same way, instead of the wider default .stat gap.
+   the $ does to the rate value) and fully close the gap between the count
+   and its "/N" nanodrops-watcher suffix in nano-blue (see #stat-viewers-kick-nd
+   etc), instead of the wider default .stat gap. The icon-to-count gap is
+   trimmed to 1px via the container's gap; the count-to-suffix gap is then
+   pulled shut with a negative margin on the suffix itself, since flex `gap`
+   can't apply two different values to the same row of children.
    The head icon also gets a small vertical nudge here: .stat is a flex
    container (align-items: center), so the .icon rule's vertical-align below
    has no effect on it - the icon needs its own relative offset to sit level
    with the digits instead of reading a couple pixels high. */
 #stat-viewers-kick,
 #stat-viewers-twitch {
-  gap: 2px;
+  gap: 1px;
+}
+#stat-viewers-kick-nd,
+#stat-viewers-twitch-nd {
+  margin-left: -1px;
 }
 #stat-viewers-kick .icon,
 #stat-viewers-twitch .icon {
