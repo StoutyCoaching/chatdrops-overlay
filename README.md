@@ -1,4 +1,4 @@
-![Screenshot](example.png)
+![Screenshot](example2.png)
 
 # Kick Stream Overlay
 
