@@ -371,18 +371,42 @@ function connectKickChat(chatroomId) {
     if (envelope.event === 'App\\Events\\ChatMessageEvent') {
       const payload = parseKickEventData(envelope);
       if (!payload) return;
-      if (!settings.showChat) return;
 
       const sender = payload.sender || {};
       const color = settings.kickForcePlatformColor
         ? KICK_BRAND_GREEN
         : (sender.identity && sender.identity.color) || DEFAULT_CHAT_COLOR;
       const badges = (sender.identity && sender.identity.badges) || [];
-      addLine('chat',
-        `<span class="user" style="color:${escapeHtml(color)}">${renderBadges(badges)}${escapeHtml(sender.username)}</span>: ` +
-        `<span class="msg">${renderChatContent(payload.content)}</span>`,
-        { plat: 'kick', msgId: payload.id, userId: sender.id, names: [sender.username, sender.slug] }
-      );
+      const userHtml = `<span class="user" style="color:${escapeHtml(color)}">${renderBadges(badges)}${escapeHtml(sender.username)}</span>`;
+      const contentHtml = `<span class="msg">${renderChatContent(payload.content)}</span>`;
+      const meta = { plat: 'kick', msgId: payload.id, userId: sender.id, names: [sender.username, sender.slug] };
+
+      // A resub-with-message (and possibly other "celebration" moments -
+      // Kick's own site shows a "celebrates their subscription..." banner
+      // above these) is still a genuine ChatMessageEvent with real content,
+      // not a separate socket event - Kick just tags it with a "type" other
+      // than the ordinary "message"/"reply" and attaches a "metadata.celebration"
+      // object. Field names here are a best guess (Kick's socket is
+      // undocumented), so any non-standard type is always logged too, to be
+      // corrected against a real payload.
+      if (payload.type && payload.type !== 'message' && payload.type !== 'reply') {
+        console.debug('[kick] non-standard chat message type', payload.type, payload);
+      }
+      const celebration = payload.metadata && payload.metadata.celebration;
+      const celebrationType = celebration && String(celebration.type || '').toLowerCase();
+      if (celebration && celebrationType.includes('subscription')) {
+        if (!settings.showSubs) return;
+        const months = celebration.total_duration || celebration.months || celebration.duration || celebration.cumulative_months;
+        addLine('sub plat-kick',
+          `<span class="tag">SUB</span>${userHtml} ${contentHtml}` +
+          (months ? ` <span class="amount">(${escapeHtml(String(months))} ${Number(months) === 1 ? 'month' : 'months'})</span>` : ''),
+          meta
+        );
+        return;
+      }
+
+      if (!settings.showChat) return;
+      addLine('chat', `${userHtml}: ${contentHtml}`, meta);
       return;
     }
 
