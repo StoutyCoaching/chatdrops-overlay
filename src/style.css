@@ -21,10 +21,12 @@
   --mute-mic: #ff3b3b;
   --mute-desktop: #e8823d;
   --font-size: 16px;
-  --font-stack: -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", sans-serif;
+  --font-stack: Tahoma, "Tahoma Bold", Verdana, sans-serif;
 }
 
 * { box-sizing: border-box; }
+
+button, input, select, textarea { font-family: inherit; }
 
 html, body {
   margin: 0;
