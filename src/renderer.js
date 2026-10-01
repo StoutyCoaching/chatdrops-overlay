@@ -1190,7 +1190,7 @@ function handleStreamlabsItem(type, item, source) {
   switch (type) {
     case 'follow':
       if (!settings.showFollows) return;
-      addLine(withPlat('follow'), `<span class="tag">FOLLOW</span><span class="user">${name}</span> followed`);
+      addLine(withPlat('follow'), `<span class="tag">FOLLOW</span><span class="user">${name}</span>`);
       return;
 
     case 'subscription':
