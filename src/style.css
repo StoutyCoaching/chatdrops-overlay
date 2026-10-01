@@ -17,6 +17,7 @@
   --accent-kicks: var(--accent-kick);
   --accent-paypal: #4ea6e0;
   --accent-nano: #1aace8;
+  --accent-bookmark: #ff6b6b;
   --mute-mic: #ff3b3b;
   --mute-desktop: #e8823d;
   --font-size: 16px;
@@ -408,6 +409,10 @@ body.window-focused {
 .line.raid { border-left-color: var(--accent-raid); }
 .line.raid .tag { background: var(--accent-raid); color: #2e1400; }
 .line.raid .amount { color: var(--accent-raid); }
+
+.line.bookmark { border-left-color: var(--accent-bookmark); }
+.line.bookmark .tag { background: var(--accent-bookmark); color: #3a0a0a; }
+.line.bookmark .amount { color: var(--accent-bookmark); }
 
 /* Platform-specific alerts (follows, subs, gifted subs, bits, raids): the renderer adds
    plat-kick / plat-twitch based on which platform Streamlabs says the alert

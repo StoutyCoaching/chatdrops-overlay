@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, screen, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, screen, nativeImage, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const Store = require('electron-store');
 const io = require('socket.io-client');
 
@@ -49,6 +50,8 @@ const store = new Store({
     obsWebcamSource: 'Webcam',
     lockShortcut: 'Control+Shift+L',
     clearChatShortcut: 'F21',
+    bookmarkShortcut: 'F22',
+    bookmarksFolder: null,
     clearChatGraceMs: 3000,
     windowBounds: { x: undefined, y: undefined, width: 480, height: 640 },
     clickThrough: false
@@ -61,6 +64,16 @@ let locked = false; // click-through state
 let streamlabsSocket = null;
 let currentLockAccelerator = null; // whatever's actually registered right now
 let currentClearChatAccelerator = null; // whatever's actually registered right now
+let currentBookmarkAccelerator = null; // whatever's actually registered right now
+
+// A bookmark "session" spans from the moment any platform goes live to the
+// moment none are - Kick and Twitch share one file rather than getting one
+// each. The file itself is created lazily, on the first bookmark actually
+// written during the session, so a session with zero bookmarks never leaves
+// an empty file behind (nothing to clean up afterwards).
+let bookmarkSessionActive = false;
+let bookmarkSessionStamp = null; // Date the current session started, for the filename
+let bookmarkSessionFile = null; // path, once created
 
 // A few messages are sent once and never repeated (Streamlabs' "Connected" /
 // "No token set", the first nanodrops poll). Main starts them the moment the
@@ -657,6 +670,51 @@ function applyClearChatShortcut(accelerator) {
   return result;
 }
 
+// Same register-then-swap approach again. The handler just tells the
+// renderer a bookmark was requested - the renderer owns the live/elapsed-time
+// state needed to build the label and chat line, and calls back via
+// append-bookmark to actually write it.
+function applyBookmarkShortcut(accelerator) {
+  if (currentBookmarkAccelerator === accelerator) return { ok: true, invalid: false };
+  const result = tryRegisterShortcut(accelerator, () => sendToRenderer('bookmark-requested'));
+  if (!result.ok) return result;
+  if (currentBookmarkAccelerator) globalShortcut.unregister(currentBookmarkAccelerator);
+  currentBookmarkAccelerator = accelerator;
+  return result;
+}
+
+// Called by the renderer whenever "is any platform live" changes, so this
+// process (which owns the bookmark file) knows when a session starts/ends.
+function noteBookmarkLiveState(anyLive) {
+  if (anyLive && !bookmarkSessionActive) {
+    bookmarkSessionActive = true;
+    bookmarkSessionStamp = new Date();
+    bookmarkSessionFile = null;
+  } else if (!anyLive && bookmarkSessionActive) {
+    bookmarkSessionActive = false;
+    bookmarkSessionStamp = null;
+    bookmarkSessionFile = null; // nothing to delete - see the lazy-create note above
+  }
+}
+
+// Appends one bookmark line, creating the session's file on first use.
+function appendBookmark(label) {
+  if (!bookmarkSessionActive) return { ok: false, reason: 'no-session' };
+  const folder = store.get('bookmarksFolder');
+  if (!folder) return { ok: false, reason: 'no-folder' };
+  if (!bookmarkSessionFile) {
+    const stamp = bookmarkSessionStamp.toISOString().replace(/[:.]/g, '-');
+    bookmarkSessionFile = path.join(folder, `bookmarks-${stamp}.txt`);
+  }
+  try {
+    fs.appendFileSync(bookmarkSessionFile, `${label}\n`);
+    return { ok: true, file: bookmarkSessionFile };
+  } catch (err) {
+    console.warn('[bookmark] write failed:', err && err.message);
+    return { ok: false, reason: 'write-failed', message: err && err.message };
+  }
+}
+
 function setClickThrough(state) {
   locked = state;
   if (mainWindow) {
@@ -728,6 +786,11 @@ app.whenReady().then(() => {
   if (!applyClearChatShortcut(store.get('clearChatShortcut')).ok) {
     applyClearChatShortcut('F21');
   }
+  // Rebindable from Settings; falls back to the default (F22) if the saved
+  // key can't be registered.
+  if (!applyBookmarkShortcut(store.get('bookmarkShortcut')).ok) {
+    applyBookmarkShortcut('F22');
+  }
   // (DevTools' Ctrl+Shift+I is handled per-window in createWindow() – it used
   // to be a *global* shortcut here, which stole that combo from every other
   // app on the machine, including DevTools in Chrome, Edge and Discord.)
@@ -793,5 +856,23 @@ ipcMain.handle('set-clear-chat-shortcut', (event, accelerator) => {
   if (ok) store.set('clearChatShortcut', accelerator);
   return { ok, invalid, accelerator: currentClearChatAccelerator };
 });
+
+ipcMain.handle('set-bookmark-shortcut', (event, accelerator) => {
+  const { ok, invalid } = applyBookmarkShortcut(accelerator);
+  if (ok) store.set('bookmarkShortcut', accelerator);
+  return { ok, invalid, accelerator: currentBookmarkAccelerator };
+});
+
+ipcMain.handle('choose-bookmark-folder', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
+  if (result.canceled || !result.filePaths[0]) return null;
+  store.set('bookmarksFolder', result.filePaths[0]);
+  return result.filePaths[0];
+});
+
+ipcMain.on('bookmark-live-state', (event, anyLive) => noteBookmarkLiveState(!!anyLive));
+
+ipcMain.handle('append-bookmark', (event, label) => appendBookmark(String(label)));
 
 ipcMain.handle('quit-app', () => app.quit());

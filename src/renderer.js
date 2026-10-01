@@ -166,6 +166,9 @@ function populateSettingsForm(s) {
   document.getElementById('lock-shortcut-status').textContent = '';
   document.getElementById('btn-rebind-clear-chat').textContent = s.clearChatShortcut || 'F21';
   document.getElementById('clear-chat-shortcut-status').textContent = '';
+  document.getElementById('btn-rebind-bookmark').textContent = s.bookmarkShortcut || 'F22';
+  document.getElementById('bookmark-shortcut-status').textContent = '';
+  document.getElementById('bookmark-folder-path').textContent = s.bookmarksFolder || 'Not set - bookmarks won\'t be saved until you choose a folder.';
   document.getElementById('in-clear-grace').value =
     (s.clearChatGraceMs != null ? s.clearChatGraceMs : DEFAULT_CLEAR_CHAT_GRACE_MS) / 1000;
 }
@@ -1051,6 +1054,7 @@ async function pollStreamStatus({ force = false } = {}) {
     document.getElementById('stat-viewers-kick').classList.add('hidden');
     document.getElementById('stat-viewers-twitch').classList.add('hidden');
     refreshFaucetBarPlacement();
+    notifyBookmarkLiveState();
     markLoadDone('kick');
     return;
   }
@@ -1103,6 +1107,7 @@ async function runStreamStatusPoll(token, hasKick, hasTwitch) {
   lastPlatformViewers.twitch = { live: twitchLive, viewers: twitch.viewers };
   renderViewerChips();
   refreshFaucetBarPlacement();
+  notifyBookmarkLiveState();
 
   markLoadDone('kick');
 }
@@ -2250,6 +2255,135 @@ clearChatRebindBtn.addEventListener('keydown', async (e) => {
 clearChatRebindBtn.addEventListener('blur', () => {
   if (capturingClearChatShortcut) stopClearChatCapture(settings.clearChatShortcut || 'F21');
 });
+
+// ---------------------------------------------------------------------------
+// Bookmark shortcut rebinding (same capture approach again) and the folder
+// picker it writes into.
+// ---------------------------------------------------------------------------
+
+const bookmarkRebindBtn = document.getElementById('btn-rebind-bookmark');
+let capturingBookmarkShortcut = false;
+
+function setBookmarkRebindStatus(text, cls) {
+  const el = document.getElementById('bookmark-shortcut-status');
+  if (el) {
+    el.textContent = text;
+    el.className = `status ${cls || ''}`.trim();
+  }
+}
+
+function startBookmarkCapture() {
+  capturingBookmarkShortcut = true;
+  bookmarkRebindBtn.textContent = 'Press a key…';
+  bookmarkRebindBtn.classList.add('capturing');
+  setBookmarkRebindStatus('');
+}
+
+function stopBookmarkCapture(displayText) {
+  capturingBookmarkShortcut = false;
+  bookmarkRebindBtn.classList.remove('capturing');
+  bookmarkRebindBtn.textContent = displayText;
+}
+
+bookmarkRebindBtn.addEventListener('click', () => {
+  if (!capturingBookmarkShortcut) startBookmarkCapture();
+});
+
+bookmarkRebindBtn.addEventListener('keydown', async (e) => {
+  if (!capturingBookmarkShortcut) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const fallback = settings.bookmarkShortcut || 'F22';
+
+  if (e.key === 'Escape') {
+    stopBookmarkCapture(fallback);
+    return;
+  }
+
+  const result = captureKeyToAccelerator(e);
+  if (result.pending) return;
+  if (result.error) {
+    setBookmarkRebindStatus(result.error, 'err');
+    return;
+  }
+
+  bookmarkRebindBtn.textContent = result.accelerator;
+  let res;
+  try {
+    res = await overlay.setBookmarkShortcut(result.accelerator);
+  } catch (err) {
+    res = { ok: false, invalid: true };
+  }
+  if (res.ok) {
+    settings.bookmarkShortcut = res.accelerator;
+    stopBookmarkCapture(res.accelerator);
+    setBookmarkRebindStatus('Saved.', 'ok');
+  } else {
+    stopBookmarkCapture(res.accelerator || fallback);
+    setBookmarkRebindStatus(
+      res.invalid
+        ? `${result.accelerator} isn't a key combination that can be used as a shortcut.`
+        : `Could not bind ${result.accelerator} – already in use by something else.`,
+      'err'
+    );
+  }
+});
+
+bookmarkRebindBtn.addEventListener('blur', () => {
+  if (capturingBookmarkShortcut) stopBookmarkCapture(settings.bookmarkShortcut || 'F22');
+});
+
+document.getElementById('btn-choose-bookmark-folder').addEventListener('click', async () => {
+  const folder = await overlay.chooseBookmarkFolder();
+  if (folder) {
+    settings.bookmarksFolder = folder;
+    document.getElementById('bookmark-folder-path').textContent = folder;
+  }
+});
+
+// Builds "Kick 00:12:34 · Twitch 00:09:10" from whichever platform(s) are
+// currently live, matching the elapsed time shown in the top bar's own live
+// timers. Returns null when nobody's live - nothing to bookmark.
+function currentBookmarkLabel() {
+  const parts = [];
+  if (liveState.kick.live && liveState.kick.start) {
+    parts.push(`Kick ${formatUptime(Date.now() - liveState.kick.start.getTime())}`);
+  }
+  if (liveState.twitch.live && liveState.twitch.start) {
+    parts.push(`Twitch ${formatUptime(Date.now() - liveState.twitch.start.getTime())}`);
+  }
+  return parts.length ? parts.join(' · ') : null;
+}
+
+overlay.onBookmarkRequested(async () => {
+  const label = currentBookmarkLabel();
+  if (!label) {
+    addLine('system', 'No live stream — bookmark not saved.');
+    return;
+  }
+  addLine('bookmark', `<span class="tag">BOOKMARK</span> <span class="amount">${escapeHtml(label)}</span>`);
+  let res;
+  try {
+    res = await overlay.appendBookmark(label);
+  } catch (err) {
+    res = { ok: false };
+  }
+  if (!res.ok && res.reason === 'no-folder') {
+    addLine('system', 'Bookmark folder not set — open settings to choose one.');
+  }
+});
+
+// Tells the main process (which owns the bookmark session/file) whenever
+// "is any platform live" changes, so it knows when a session starts/ends.
+// Only sent on an actual change, not every 30s poll.
+let lastNotifiedBookmarkLiveState = null;
+function notifyBookmarkLiveState() {
+  const anyLive = liveState.kick.live || liveState.twitch.live;
+  if (anyLive === lastNotifiedBookmarkLiveState) return;
+  lastNotifiedBookmarkLiveState = anyLive;
+  overlay.notifyLiveState(anyLive);
+}
 
 // Shows a faint outline around the window's true bounds while it has focus,
 // since it's otherwise fully transparent and easy to lose track of.
