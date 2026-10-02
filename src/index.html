@@ -94,7 +94,7 @@
       <svg class="icon icon-twitch" width="13" height="13" fill="currentColor"><use href="#icon-head"></use></svg><span id="stat-viewers-twitch-value">–</span><span id="stat-viewers-twitch-nd" class="accent hidden">/–</span>
     </span>
     <span id="stat-nd-rate" class="stat hidden">
-      <span class="rate-text"><span class="accent">$</span><span id="stat-nd-rate-value">–</span><span class="accent">/hr</span></span>
+      <span class="rate-text"><span id="stat-nd-rate-value">–</span></span>
     </span>
     <span id="stat-nd-faucet-kick" class="stat stat-faucet stat-faucet-kick hidden">
       <span id="stat-nd-faucet-kick-value">–</span>
@@ -211,6 +211,8 @@
           <input id="in-nanodrops-faucet" type="text" placeholder="e.g. a4552cef" />
         </label>
         <label class="check"><input type="checkbox" id="chk-nanodrops-show-offline" /> Show faucet balance while stream is offline</label>
+        <label class="check"><input type="checkbox" id="chk-rate-usd" /> Show $/hr</label>
+        <label class="check"><input type="checkbox" id="chk-rate-xno" /> Show Ӿ/hr</label>
         <label>Drop ticker decimal places
           <input id="in-drop-decimals" type="number" min="0" max="8" step="1" />
         </label>

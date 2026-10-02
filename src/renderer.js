@@ -150,6 +150,8 @@ function populateSettingsForm(s) {
   document.getElementById('in-nanodrops-faucet').value = s.nanodropsFaucetId || '';
   document.getElementById('in-nanodrops-faucet-2').value = s.nanodropsFaucetId2 || '';
   document.getElementById('chk-nanodrops-show-offline').checked = !!s.showOfflineFaucets;
+  document.getElementById('chk-rate-usd').checked = s.showRateUsd !== false;
+  document.getElementById('chk-rate-xno').checked = !!s.showRateXno;
   document.getElementById('in-drop-decimals').value = s.dropDecimals != null ? s.dropDecimals : 4;
   document.getElementById('in-xno-decimals').value = s.xnoDecimals != null ? s.xnoDecimals : 2;
   document.getElementById('chk-obs').checked = !!s.obsEnabled;
@@ -1601,9 +1603,28 @@ function handleNanodropsMessages(messages, baselineFaucets) {
   }
 }
 
+// Last hourly rate from the nanodrops stats, kept so the rate chip can be
+// re-rendered the moment the "Show $/hr" / "Show Ӿ/hr" settings change
+// instead of waiting for the next poll.
+let lastNdRate = { usd: null, xno: null };
+
+// Shows the hourly rate in dollars, Nano, or both, per the two checkboxes.
+// With neither ticked (or no rate data yet) the chip is hidden.
+function renderNdRate() {
+  const parts = [];
+  if (settings.showRateUsd !== false && lastNdRate.usd != null) {
+    parts.push(`<span class="accent">$</span>${fmtUsd(lastNdRate.usd)}<span class="accent">/hr</span>`);
+  }
+  if (settings.showRateXno && lastNdRate.xno != null) {
+    parts.push(`${fmtXno(lastNdRate.xno)}<span class="accent">/hr</span>`);
+  }
+  setNanodropsStat('stat-nd-rate', parts.length > 0, parts.join(' <span class="accent">·</span> '));
+}
+
 function handleNanodropsData(data) {
   if (!data) return;
-  setNanodropsStat('stat-nd-rate', data.hourlyRateUsd != null, fmtUsd(data.hourlyRateUsd));
+  lastNdRate = { usd: data.hourlyRateUsd, xno: data.hourlyRateXno };
+  renderNdRate();
   handleNanodropsFaucets(data.faucets);
   handleNanodropsPool(data.networkActiveNanoXno, data.networkActiveUsers);
 
@@ -2459,6 +2480,8 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     nanodropsFaucetId: document.getElementById('in-nanodrops-faucet').value.trim(),
     nanodropsFaucetId2: document.getElementById('in-nanodrops-faucet-2').value.trim(),
     showOfflineFaucets: document.getElementById('chk-nanodrops-show-offline').checked,
+    showRateUsd: document.getElementById('chk-rate-usd').checked,
+    showRateXno: document.getElementById('chk-rate-xno').checked,
     dropDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-drop-decimals').value) || 0)),
     xnoDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-xno-decimals').value) || 0)),
     obsEnabled: document.getElementById('chk-obs').checked,
@@ -2494,6 +2517,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   // Re-place faucet chips immediately using the new setting/current live
   // status, rather than waiting for the next poll to catch up.
   refreshFaucetBarPlacement();
+  renderNdRate();
 
   // Switching nanodrops off stops the polling, so nothing would ever come
   // along to hide its chips and ticker – do it here.

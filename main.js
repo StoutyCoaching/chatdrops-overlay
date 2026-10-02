@@ -39,6 +39,8 @@ const store = new Store({
     nanodropsFaucetId: 'a4552cef',
     nanodropsFaucetId2: '',
     showOfflineFaucets: false,
+    showRateUsd: true,
+    showRateXno: false,
     dropDecimals: 4,
     xnoDecimals: 2,
     obsEnabled: false,
@@ -169,6 +171,7 @@ function extractStats(stats) {
   const usdPerXno = Number(stats?.usdPerXno ?? 0);
   return {
     hourlyRateUsd: usdPerXno ? hourlyRateXno * usdPerXno : null,
+    hourlyRateXno: stats?.hourlyRate?.xno != null ? hourlyRateXno : null,
     activeUsers: stats?.activeUsers ?? null,
     activeNanoXno: stats?.activeNano?.xno ?? null
   };
@@ -444,6 +447,7 @@ async function pollNanodrops({ force = false } = {}) {
         .filter(({ src }) => src.data)
         .map(({ id, src }) => ({ id, balanceXno: src.data.balanceXno, online: src.data.online, watchers: src.data.watchers })),
       hourlyRateUsd: stats ? stats.hourlyRateUsd : null,
+      hourlyRateXno: stats ? stats.hourlyRateXno : null,
       networkActiveUsers: stats ? stats.activeUsers : null,
       networkActiveNanoXno: stats ? stats.activeNanoXno : null,
       // Which faucets this payload carries fresh history for – including ones
