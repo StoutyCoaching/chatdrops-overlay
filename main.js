@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const Store = require('electron-store');
 const io = require('socket.io-client');
+const os = require('os');
 
 // Only one overlay at a time: a second copy would open a second window and a
 // second Streamlabs connection, and its global shortcuts would silently fail
@@ -41,6 +42,8 @@ const store = new Store({
     showOfflineFaucets: false,
     showRateUsd: true,
     showRateXno: false,
+    keepOnTop: true,
+    lowImpactMode: false,
     dropDecimals: 4,
     xnoDecimals: 2,
     obsEnabled: false,
@@ -59,6 +62,25 @@ const store = new Store({
     clickThrough: false
   }
 });
+
+// Low-impact mode: render the overlay on the CPU instead of the GPU, so it
+// doesn't compete with the game for GPU time. Has to be decided before the app
+// is ready, so changing it in Settings needs a restart.
+if (store.get('lowImpactMode')) app.disableHardwareAcceleration();
+
+// Run the overlay at below-normal CPU priority so the game always wins when
+// the two compete. Windows child processes inherit this from the parent, and
+// it's re-applied to every Electron process once the window is up (the GPU and
+// renderer processes) in case any were started before it took effect.
+function lowerOverlayPriority() {
+  const low = os.constants.priority.PRIORITY_BELOW_NORMAL;
+  const pids = new Set([process.pid]);
+  try { app.getAppMetrics().forEach((m) => pids.add(m.pid)); } catch (_) { /* before ready */ }
+  pids.forEach((pid) => {
+    try { os.setPriority(pid, low); } catch (_) { /* process gone / not permitted */ }
+  });
+}
+lowerOverlayPriority();
 
 let mainWindow = null;
 let tray = null;
@@ -571,6 +593,26 @@ function scheduleWindowBoundsSave() {
   boundsSaveTimer = setTimeout(flushWindowBounds, BOUNDS_SAVE_DELAY_MS);
 }
 
+// Some games (borderless windowed ones included) grab the topmost slot when
+// they take focus, which puts them above the overlay. Re-asserting topmost
+// puts the overlay back above them. This only restacks the window - it doesn't
+// activate it, so it can't pull focus away from the game. It can't help with
+// true exclusive fullscreen, where Windows doesn't composite other windows.
+let keepOnTopTimer = null;
+const KEEP_ON_TOP_INTERVAL_MS = 3000;
+
+function assertOnTop() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
+  mainWindow.setAlwaysOnTop(false);
+  mainWindow.setAlwaysOnTop(true, 'screen-saver');
+}
+
+function applyKeepOnTop(enabled) {
+  clearInterval(keepOnTopTimer);
+  keepOnTopTimer = null;
+  if (enabled) keepOnTopTimer = setInterval(assertOnTop, KEEP_ON_TOP_INTERVAL_MS);
+}
+
 function createWindow() {
   const bounds = fitBoundsToDisplays(store.get('windowBounds'));
 
@@ -597,6 +639,11 @@ function createWindow() {
   });
 
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  applyKeepOnTop(store.get('keepOnTop'));
+  mainWindow.webContents.once('did-finish-load', () => {
+    lowerOverlayPriority();
+    setTimeout(lowerOverlayPriority, 5000);
+  });
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
   mainWindow.on('focus', () => sendToRenderer('window-focus-changed', true));
@@ -833,6 +880,7 @@ ipcMain.handle('set-settings', (event, patch) => {
   const tokenChanged = 'streamlabsToken' in patch && patch.streamlabsToken !== store.get('streamlabsToken');
   store.set(patch);
   if (tokenChanged) connectStreamlabs();
+  if ('keepOnTop' in patch) applyKeepOnTop(!!patch.keepOnTop);
   if ('nanodropsFaucetId' in patch || 'nanodropsFaucetId2' in patch || 'showNanodrops' in patch) {
     pruneNanodropsState();
     pollNanodrops({ force: true });

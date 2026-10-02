@@ -152,6 +152,8 @@ function populateSettingsForm(s) {
   document.getElementById('chk-nanodrops-show-offline').checked = !!s.showOfflineFaucets;
   document.getElementById('chk-rate-usd').checked = s.showRateUsd !== false;
   document.getElementById('chk-rate-xno').checked = !!s.showRateXno;
+  document.getElementById('chk-keep-on-top').checked = s.keepOnTop !== false;
+  document.getElementById('chk-low-impact').checked = !!s.lowImpactMode;
   document.getElementById('in-drop-decimals').value = s.dropDecimals != null ? s.dropDecimals : 4;
   document.getElementById('in-xno-decimals').value = s.xnoDecimals != null ? s.xnoDecimals : 2;
   document.getElementById('chk-obs').checked = !!s.obsEnabled;
@@ -899,9 +901,10 @@ function tickClockAndUptime() {
   // the strip at a time. No explicit locale passed, so this still follows
   // the OS's own clock format (12h/24h, separators, etc.) either way.
   if (clockEl) {
-    clockEl.textContent = (kickTimer || twitchTimer)
+    const clockText = (kickTimer || twitchTimer)
       ? new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       : new Date().toLocaleTimeString();
+    if (clockEl.textContent !== clockText) clockEl.textContent = clockText;
   }
 
   [
@@ -913,7 +916,8 @@ function tickClockAndUptime() {
     const uptimeEl = document.getElementById(`stream-uptime-${key}`);
     if (!uptimeEl || !visible) return;
     const start = liveState[key].start;
-    uptimeEl.textContent = start ? formatUptime(Date.now() - start.getTime()) : '00:00';
+    const uptimeText = start ? formatUptime(Date.now() - start.getTime()) : '00:00';
+    if (uptimeEl.textContent !== uptimeText) uptimeEl.textContent = uptimeText;
     // Hover the uptime to see exactly what the live platform sent us and how
     // we read it - the quickest way to tell a platform-side start-time issue
     // apart from a parsing bug on our end.
@@ -2482,6 +2486,8 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     showOfflineFaucets: document.getElementById('chk-nanodrops-show-offline').checked,
     showRateUsd: document.getElementById('chk-rate-usd').checked,
     showRateXno: document.getElementById('chk-rate-xno').checked,
+    keepOnTop: document.getElementById('chk-keep-on-top').checked,
+    lowImpactMode: document.getElementById('chk-low-impact').checked,
     dropDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-drop-decimals').value) || 0)),
     xnoDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-xno-decimals').value) || 0)),
     obsEnabled: document.getElementById('chk-obs').checked,
