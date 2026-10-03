@@ -125,6 +125,7 @@ function applyAppearance(s) {
   document.documentElement.style.setProperty('--font-size', `${s.fontSize}px`);
   document.documentElement.style.setProperty('--bg-opacity', s.bgOpacity);
   document.documentElement.style.setProperty('--drag-bar-opacity', s.dragBarOpacity != null ? s.dragBarOpacity : 0.35);
+  document.body.classList.toggle('low-impact', !!s.lowImpactActive);
 }
 
 function populateSettingsForm(s) {

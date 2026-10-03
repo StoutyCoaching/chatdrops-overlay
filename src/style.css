@@ -67,6 +67,16 @@ body.window-focused {
   color: var(--ink-muted);
 }
 
+/* Low-impact (software rendering) mode only: Windows treats alpha-0 pixels of
+   a CPU-rendered window as click-through, which made the bar undraggable at 0
+   opacity. A 2% floor is invisible but still catches the mouse. GPU mode
+   doesn't need it, so full transparency stays available there. Kept at the
+   same specificity as the muted-state rules below (which come later) so the
+   mute colours still win. */
+.low-impact #drag-strip {
+  background: rgba(0, 0, 0, max(var(--drag-bar-opacity), 0.02));
+}
+
 /* Mic/desktop mute indicator: painted straight onto the top bar rather than
    a separate meter element, since it only needs to change on an actual
    mute toggle rather than doing any ongoing work. Mic takes precedence

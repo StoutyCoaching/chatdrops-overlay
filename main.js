@@ -66,7 +66,11 @@ const store = new Store({
 // Low-impact mode: render the overlay on the CPU instead of the GPU, so it
 // doesn't compete with the game for GPU time. Has to be decided before the app
 // is ready, so changing it in Settings needs a restart.
-if (store.get('lowImpactMode')) app.disableHardwareAcceleration();
+// lowImpactActive records the mode this run actually started in (the saved
+// setting can change mid-run but only takes effect on the next launch); it's
+// reported to the renderer so mode-specific styling matches what's running.
+const lowImpactActive = !!store.get('lowImpactMode');
+if (lowImpactActive) app.disableHardwareAcceleration();
 
 // Run the overlay at below-normal CPU priority so the game always wins when
 // the two compete. Windows child processes inherit this from the parent, and
@@ -866,7 +870,7 @@ app.on('window-all-closed', () => {
 });
 
 // ---- IPC ----
-ipcMain.handle('get-settings', () => store.store);
+ipcMain.handle('get-settings', () => ({ ...store.store, lowImpactActive }));
 
 ipcMain.handle('renderer-ready', () => {
   REPLAYABLE_CHANNELS.forEach((channel) => {
@@ -885,7 +889,7 @@ ipcMain.handle('set-settings', (event, patch) => {
     pruneNanodropsState();
     pollNanodrops({ force: true });
   }
-  return store.store;
+  return { ...store.store, lowImpactActive };
 });
 
 ipcMain.handle('reconnect-streamlabs', () => {
