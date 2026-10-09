@@ -632,7 +632,11 @@ function createWindow() {
     hasShadow: false,
     alwaysOnTop: true,
     resizable: true,
-    skipTaskbar: false,
+    // A tool window (WS_EX_TOOLWINDOW on Windows) is left out of Alt-Tab, and
+    // skipTaskbar drops the taskbar button too. The tray icon (Show / Focus,
+    // Settings, Quit) is how to reach the overlay instead.
+    type: 'toolbar',
+    skipTaskbar: true,
     backgroundColor: '#00000000',
     icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: {
