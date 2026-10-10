@@ -173,6 +173,8 @@ function populateSettingsForm(s) {
   document.getElementById('clear-chat-shortcut-status').textContent = '';
   document.getElementById('btn-rebind-bookmark').textContent = s.bookmarkShortcut || 'F22';
   document.getElementById('bookmark-shortcut-status').textContent = '';
+  document.getElementById('btn-rebind-toggle-visibility').textContent = s.toggleVisibilityShortcut || 'F23';
+  document.getElementById('toggle-visibility-shortcut-status').textContent = '';
   document.getElementById('bookmark-folder-path').textContent = s.bookmarksFolder || 'Not set - bookmarks won\'t be saved until you choose a folder.';
   document.getElementById('in-clear-grace').value =
     (s.clearChatGraceMs != null ? s.clearChatGraceMs : DEFAULT_CLEAR_CHAT_GRACE_MS) / 1000;
@@ -2358,6 +2360,83 @@ bookmarkRebindBtn.addEventListener('keydown', async (e) => {
 
 bookmarkRebindBtn.addEventListener('blur', () => {
   if (capturingBookmarkShortcut) stopBookmarkCapture(settings.bookmarkShortcut || 'F22');
+});
+
+// ---------------------------------------------------------------------------
+// Show / hide shortcut rebinding (same capture approach as the others).
+// ---------------------------------------------------------------------------
+
+const toggleVisibilityRebindBtn = document.getElementById('btn-rebind-toggle-visibility');
+let capturingToggleVisibilityShortcut = false;
+
+function setToggleVisibilityRebindStatus(text, cls) {
+  const el = document.getElementById('toggle-visibility-shortcut-status');
+  if (el) {
+    el.textContent = text;
+    el.className = `status ${cls || ''}`.trim();
+  }
+}
+
+function startToggleVisibilityCapture() {
+  capturingToggleVisibilityShortcut = true;
+  toggleVisibilityRebindBtn.textContent = 'Press a key…';
+  toggleVisibilityRebindBtn.classList.add('capturing');
+  setToggleVisibilityRebindStatus('');
+}
+
+function stopToggleVisibilityCapture(displayText) {
+  capturingToggleVisibilityShortcut = false;
+  toggleVisibilityRebindBtn.classList.remove('capturing');
+  toggleVisibilityRebindBtn.textContent = displayText;
+}
+
+toggleVisibilityRebindBtn.addEventListener('click', () => {
+  if (!capturingToggleVisibilityShortcut) startToggleVisibilityCapture();
+});
+
+toggleVisibilityRebindBtn.addEventListener('keydown', async (e) => {
+  if (!capturingToggleVisibilityShortcut) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const fallback = settings.toggleVisibilityShortcut || 'F23';
+
+  if (e.key === 'Escape') {
+    stopToggleVisibilityCapture(fallback);
+    return;
+  }
+
+  const result = captureKeyToAccelerator(e);
+  if (result.pending) return;
+  if (result.error) {
+    setToggleVisibilityRebindStatus(result.error, 'err');
+    return;
+  }
+
+  toggleVisibilityRebindBtn.textContent = result.accelerator;
+  let res;
+  try {
+    res = await overlay.setToggleVisibilityShortcut(result.accelerator);
+  } catch (err) {
+    res = { ok: false, invalid: true };
+  }
+  if (res.ok) {
+    settings.toggleVisibilityShortcut = res.accelerator;
+    stopToggleVisibilityCapture(res.accelerator);
+    setToggleVisibilityRebindStatus('Saved.', 'ok');
+  } else {
+    stopToggleVisibilityCapture(res.accelerator || fallback);
+    setToggleVisibilityRebindStatus(
+      res.invalid
+        ? `${result.accelerator} isn't a key combination that can be used as a shortcut.`
+        : `Could not bind ${result.accelerator} – already in use by something else.`,
+      'err'
+    );
+  }
+});
+
+toggleVisibilityRebindBtn.addEventListener('blur', () => {
+  if (capturingToggleVisibilityShortcut) stopToggleVisibilityCapture(settings.toggleVisibilityShortcut || 'F23');
 });
 
 document.getElementById('btn-choose-bookmark-folder').addEventListener('click', async () => {

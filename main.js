@@ -56,6 +56,7 @@ const store = new Store({
     lockShortcut: 'Control+Shift+L',
     clearChatShortcut: 'F21',
     bookmarkShortcut: 'F22',
+    toggleVisibilityShortcut: 'F23',
     bookmarksFolder: null,
     clearChatGraceMs: 3000,
     windowBounds: { x: undefined, y: undefined, width: 480, height: 640 },
@@ -93,6 +94,7 @@ let streamlabsSocket = null;
 let currentLockAccelerator = null; // whatever's actually registered right now
 let currentClearChatAccelerator = null; // whatever's actually registered right now
 let currentBookmarkAccelerator = null; // whatever's actually registered right now
+let currentToggleVisibilityAccelerator = null; // whatever's actually registered right now
 
 // A bookmark "session" spans from the moment any platform goes live to the
 // moment none are - Kick and Twitch share one file rather than getting one
@@ -642,7 +644,11 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // The overlay can be hidden with a shortcut but has to keep running:
+      // chat, alerts, timers and reconnects must not be throttled (or paused)
+      // just because the window isn't on screen.
+      backgroundThrottling: false
     }
   });
 
@@ -739,6 +745,30 @@ function applyBookmarkShortcut(accelerator) {
   if (!result.ok) return result;
   if (currentBookmarkAccelerator) globalShortcut.unregister(currentBookmarkAccelerator);
   currentBookmarkAccelerator = accelerator;
+  return result;
+}
+
+// Hides the overlay window without closing or pausing anything - chat, alerts
+// and timers keep running behind the scenes - and brings it back the same
+// way. Showing uses showInactive() so it never pulls focus off the game.
+function toggleOverlayVisibility() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
+  } else {
+    ensureWindowOnScreen();
+    mainWindow.showInactive();
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  }
+}
+
+// Same register-then-swap approach once more, for the show / hide toggle.
+function applyToggleVisibilityShortcut(accelerator) {
+  if (currentToggleVisibilityAccelerator === accelerator) return { ok: true, invalid: false };
+  const result = tryRegisterShortcut(accelerator, toggleOverlayVisibility);
+  if (!result.ok) return result;
+  if (currentToggleVisibilityAccelerator) globalShortcut.unregister(currentToggleVisibilityAccelerator);
+  currentToggleVisibilityAccelerator = accelerator;
   return result;
 }
 
@@ -850,6 +880,11 @@ app.whenReady().then(() => {
   if (!applyBookmarkShortcut(store.get('bookmarkShortcut')).ok) {
     applyBookmarkShortcut('F22');
   }
+  // Rebindable from Settings; falls back to the default (F23) if the saved
+  // key can't be registered.
+  if (!applyToggleVisibilityShortcut(store.get('toggleVisibilityShortcut')).ok) {
+    applyToggleVisibilityShortcut('F23');
+  }
   // (DevTools' Ctrl+Shift+I is handled per-window in createWindow() – it used
   // to be a *global* shortcut here, which stole that combo from every other
   // app on the machine, including DevTools in Chrome, Edge and Discord.)
@@ -921,6 +956,12 @@ ipcMain.handle('set-bookmark-shortcut', (event, accelerator) => {
   const { ok, invalid } = applyBookmarkShortcut(accelerator);
   if (ok) store.set('bookmarkShortcut', accelerator);
   return { ok, invalid, accelerator: currentBookmarkAccelerator };
+});
+
+ipcMain.handle('set-toggle-visibility-shortcut', (event, accelerator) => {
+  const { ok, invalid } = applyToggleVisibilityShortcut(accelerator);
+  if (ok) store.set('toggleVisibilityShortcut', accelerator);
+  return { ok, invalid, accelerator: currentToggleVisibilityAccelerator };
 });
 
 ipcMain.handle('choose-bookmark-folder', async () => {
