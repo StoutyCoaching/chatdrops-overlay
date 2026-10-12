@@ -226,8 +226,15 @@ function renderBadges(badges) {
     .slice(0, maxBadges)
     .map((id) => {
       const type = id.replace('icon-badge-', '');
-      // Tries a local badge image first (assets/badges/<type>.png, dropped in
-      // by the user); falls back to the built-in drawn icon if it's missing.
+      // Uses a local badge image (assets/badges/<type>.png) when one exists;
+      // otherwise goes straight to the built-in drawn icon, without ever
+      // requesting a file that isn't there.
+      const hasImage = Array.isArray(settings.customBadges) && settings.customBadges.includes(type);
+      if (!hasImage) {
+        return `<span class="badge-icon-wrap">` +
+          `<svg class="badge-icon ${id}" width="13" height="13" fill="currentColor"><use href="#${id}"></use></svg>` +
+          `</span>`;
+      }
       return `<span class="badge-icon-wrap">` +
         `<img class="badge-img" src="../assets/badges/${type}.png" alt="" ` +
         `onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block';" />` +

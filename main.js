@@ -67,6 +67,21 @@ const store = new Store({
 // Low-impact mode: render the overlay on the CPU instead of the GPU, so it
 // doesn't compete with the game for GPU time. Has to be decided before the app
 // is ready, so changing it in Settings needs a restart.
+// Which custom badge images exist in assets/badges (names without .png).
+// The renderer only asks for a badge image that's in this list - requesting
+// files that aren't there fails once per badge on every chat message, which
+// is thousands of doomed file loads and console errors in a busy chat.
+function listCustomBadges() {
+  try {
+    return fs.readdirSync(path.join(__dirname, 'assets', 'badges'))
+      .filter((f) => f.toLowerCase().endsWith('.png'))
+      .map((f) => f.slice(0, -4));
+  } catch (_) {
+    return [];
+  }
+}
+const customBadges = listCustomBadges();
+
 // lowImpactActive records the mode this run actually started in (the saved
 // setting can change mid-run but only takes effect on the next launch); it's
 // reported to the renderer so mode-specific styling matches what's running.
@@ -909,7 +924,13 @@ app.on('window-all-closed', () => {
 });
 
 // ---- IPC ----
-ipcMain.handle('get-settings', () => ({ ...store.store, lowImpactActive }));
+// What the renderer gets: the saved settings plus facts about this run that
+// aren't saved settings (rendering mode in use, which badge images exist).
+function settingsPayload() {
+  return { ...store.store, lowImpactActive, customBadges };
+}
+
+ipcMain.handle('get-settings', () => settingsPayload());
 
 ipcMain.handle('renderer-ready', () => {
   REPLAYABLE_CHANNELS.forEach((channel) => {
@@ -928,7 +949,7 @@ ipcMain.handle('set-settings', (event, patch) => {
     pruneNanodropsState();
     pollNanodrops({ force: true });
   }
-  return { ...store.store, lowImpactActive };
+  return settingsPayload();
 });
 
 ipcMain.handle('reconnect-streamlabs', () => {
