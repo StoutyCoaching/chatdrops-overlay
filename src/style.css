@@ -112,19 +112,10 @@ body.window-focused {
 .startup-loading.hidden { display: none; }
 
 .loading-dots::after {
-  content: '';
+  content: '...';
   display: inline-block;
   width: 1.1em;
   text-align: left;
-  animation: loading-dots-cycle 1.2s infinite;
-}
-
-@keyframes loading-dots-cycle {
-  0%   { content: ''; }
-  25%  { content: '.'; }
-  50%  { content: '..'; }
-  75%  { content: '...'; }
-  100% { content: ''; }
 }
 
 .drag-sep { opacity: 0.5; }
@@ -211,7 +202,6 @@ body.window-focused {
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--ink-muted);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
 #stats-bar:empty,
@@ -303,7 +293,6 @@ body.window-focused {
   font-size: 12px;
   font-weight: 600;
   color: var(--ink);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -349,17 +338,10 @@ body.window-focused {
   position: relative;
   padding: 3px 0 3px 10px;
   margin-bottom: 2px;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
   word-wrap: break-word;
   border-left: 3px solid transparent;
   background: rgba(var(--panel), calc(var(--bg-opacity) * 0.55));
   border-radius: 0 4px 4px 0;
-  animation: rise 160ms ease-out;
-}
-
-@keyframes rise {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .line .user { font-weight: 600; }
@@ -381,7 +363,6 @@ body.window-focused {
   border-radius: 3px;
   margin-right: 6px;
   vertical-align: 1px;
-  text-shadow: none;
 }
 
 .line.chat { border-left-color: rgba(255, 255, 255, 0.18); }
@@ -450,7 +431,8 @@ body.window-focused {
 .line.nanotip-faucet .tag {
   background: transparent;
   color: var(--accent-nano);
-  box-shadow: inset 0 0 0 1px var(--accent-nano);
+  outline: 1px solid var(--accent-nano);
+  outline-offset: -1px;
 }
 
 /* Names which stream's faucet a JUICED line came from ("Kick faucet" /

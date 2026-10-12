@@ -95,8 +95,16 @@ function renderChatContent(content) {
 // `meta` (chat lines only) records who/what a line came from – platform,
 // message id, user id and name(s) – so it can be taken back out of the feed if
 // the message is later deleted or its author is banned/timed out.
+// Whether the feed is scrolled to (near) the bottom, kept up to date by the
+// scroll event so addLine doesn't have to read the feed's size - which forces
+// the browser to redo layout - before every single message.
+let feedPinnedToBottom = true;
+feedEl.addEventListener('scroll', () => {
+  feedPinnedToBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 60;
+}, { passive: true });
+
 function addLine(type, html, meta) {
-  const wasNearBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 60;
+  const wasNearBottom = feedPinnedToBottom;
 
   const div = document.createElement('div');
   div.className = `line ${type}`;
