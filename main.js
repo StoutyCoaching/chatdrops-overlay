@@ -89,6 +89,11 @@ const customBadges = listCustomBadges();
 const lowImpactActive = !!store.get('lowImpactMode');
 if (lowImpactActive) app.disableHardwareAcceleration();
 
+// Chromium builds (and keeps updating) an accessibility tree whenever any
+// Windows tool says it's listening, and every new chat line then costs extra
+// work. A game overlay doesn't need screen-reader support, so switch it off.
+app.commandLine.appendSwitch('disable-renderer-accessibility');
+
 // Run the overlay at below-normal CPU priority so the game always wins when
 // the two compete. Windows child processes inherit this from the parent, and
 // it's re-applied to every Electron process once the window is up (the GPU and

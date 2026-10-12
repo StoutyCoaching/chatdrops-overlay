@@ -52,10 +52,17 @@ const EMOTE_RE = /\[emote:(\d+):([^\]]+)\]/g;
 function freezeEmote(img) {
   if (!img.parentNode || !img.naturalWidth || !img.naturalHeight) return;
   try {
+    // Draw it at the size it's actually shown at (1.4em tall, see .kick-emote)
+    // instead of the original full size, so it isn't downscaled again on every
+    // repaint. Never scaled up.
+    const targetH = Math.ceil((settings.fontSize || 16) * 1.4 * (window.devicePixelRatio || 1));
+    const scale = Math.min(1, targetH / img.naturalHeight);
     const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    canvas.getContext('2d').drawImage(img, 0, 0);
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     canvas.className = img.className;
     canvas.title = img.title;
     canvas.setAttribute('role', 'img');
@@ -92,9 +99,6 @@ function renderChatContent(content) {
   return out;
 }
 
-// `meta` (chat lines only) records who/what a line came from – platform,
-// message id, user id and name(s) – so it can be taken back out of the feed if
-// the message is later deleted or its author is banned/timed out.
 // Whether the feed is scrolled to (near) the bottom, kept up to date by the
 // scroll event so addLine doesn't have to read the feed's size - which forces
 // the browser to redo layout - before every single message.
@@ -103,9 +107,48 @@ feedEl.addEventListener('scroll', () => {
   feedPinnedToBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 60;
 }, { passive: true });
 
-function addLine(type, html, meta) {
-  const wasNearBottom = feedPinnedToBottom;
+// New lines are collected and added to the feed together at the next screen
+// refresh (about 16ms later; never more than 50ms), so a burst of messages is
+// one layout, one scroll and one repaint instead of one each. The timer is a
+// backstop in case frames aren't being produced (e.g. the window is hidden).
+const pendingLines = document.createDocumentFragment();
+let pendingLineCount = 0;
+let lineFlushScheduled = false;
 
+function flushPendingLines() {
+  if (pendingLineCount === 0) return;
+  const wasNearBottom = feedPinnedToBottom;
+  // A cached emote can finish loading while its line is still waiting here,
+  // and a load event on a detached element never reaches the document-level
+  // listener (see freezeEmote), so freeze any that are already done.
+  const waitingEmotes = settings.animateEmotes ? [] : Array.from(pendingLines.querySelectorAll('img.kick-emote'));
+  feedEl.appendChild(pendingLines);
+  pendingLineCount = 0;
+  waitingEmotes.forEach((img) => { if (img.complete) freezeEmote(img); });
+
+  while (feedEl.children.length > MAX_LINES) {
+    feedEl.removeChild(feedEl.firstChild);
+  }
+
+  if (wasNearBottom) feedEl.scrollTop = feedEl.scrollHeight;
+}
+
+function scheduleLineFlush() {
+  if (lineFlushScheduled) return;
+  lineFlushScheduled = true;
+  const run = () => {
+    if (!lineFlushScheduled) return;
+    lineFlushScheduled = false;
+    flushPendingLines();
+  };
+  requestAnimationFrame(run);
+  setTimeout(run, 50);
+}
+
+// `meta` (chat lines only) records who/what a line came from – platform,
+// message id, user id and name(s) – so it can be taken back out of the feed if
+// the message is later deleted or its author is banned/timed out.
+function addLine(type, html, meta) {
   const div = document.createElement('div');
   div.className = `line ${type}`;
   div.dataset.ts = Date.now(); // used by clearFeed()'s new-message grace period
@@ -117,13 +160,9 @@ function addLine(type, html, meta) {
     if (names.length) div.dataset.names = names.join('|');
   }
   div.innerHTML = html;
-  feedEl.appendChild(div);
-
-  while (feedEl.children.length > MAX_LINES) {
-    feedEl.removeChild(feedEl.firstChild);
-  }
-
-  if (wasNearBottom) feedEl.scrollTop = feedEl.scrollHeight;
+  pendingLines.appendChild(div);
+  pendingLineCount += 1;
+  scheduleLineFlush();
 }
 
 // Takes chat lines back out of the feed after a moderation action on that
@@ -132,6 +171,7 @@ function addLine(type, html, meta) {
 // when a platform's event doesn't carry an id). Only chat lines are touched –
 // alerts stay put.
 function removeChatLines(plat, { msgId, userId, names } = {}) {
+  flushPendingLines();
   const wantedNames = (names || []).filter(Boolean).map((n) => String(n).toLowerCase());
   Array.from(feedEl.children).forEach((el) => {
     if (!el.classList.contains('chat') || el.dataset.plat !== plat) return;
@@ -151,6 +191,7 @@ const DEFAULT_CLEAR_CHAT_GRACE_MS = 3000;
 
 function clearFeed() {
   const graceMs = settings.clearChatGraceMs != null ? settings.clearChatGraceMs : DEFAULT_CLEAR_CHAT_GRACE_MS;
+  flushPendingLines();
   const cutoff = Date.now() - graceMs;
   Array.from(feedEl.children).forEach((el) => {
     const ts = Number(el.dataset.ts || 0);

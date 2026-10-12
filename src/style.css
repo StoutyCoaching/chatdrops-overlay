@@ -202,6 +202,9 @@ body.window-focused {
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--ink-muted);
+  /* Same translucent backing as the chat lines, driven by the same Background
+     opacity setting, now that the text shadows that kept these readable are gone. */
+  background: rgba(var(--panel), calc(var(--bg-opacity) * 0.55));
 }
 
 #stats-bar:empty,
@@ -295,6 +298,7 @@ body.window-focused {
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
+  background: rgba(var(--panel), calc(var(--bg-opacity) * 0.55));
 }
 
 #drop-ticker.hidden { display: none; }
