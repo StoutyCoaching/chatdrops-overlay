@@ -43,6 +43,7 @@ const store = new Store({
     showRateUsd: true,
     showRateXno: false,
     keepOnTop: true,
+    animateEmotes: false,
     lowImpactMode: false,
     dropDecimals: 4,
     xnoDecimals: 2,

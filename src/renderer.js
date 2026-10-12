@@ -42,6 +42,39 @@ function escapeHtml(str) {
 // and swapped for <img> tags. Everything else still gets escaped normally.
 const EMOTE_RE = /\[emote:(\d+):([^\]]+)\]/g;
 
+// Animated emotes (GIF/WebP) make the browser repaint the overlay window on
+// every frame, which keeps a transparent window over the game recompositing
+// constantly and can cause stutter. Unless "Animate emotes" is on, a Kick
+// emote is drawn once into a canvas as soon as it loads (that's its first
+// frame) and the canvas takes the image's place, so nothing keeps animating.
+// (Twitch emotes just ask Twitch for their static version instead.) The
+// canvas is only displayed, never read back, so cross-origin images are fine.
+function freezeEmote(img) {
+  if (!img.parentNode || !img.naturalWidth || !img.naturalHeight) return;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    canvas.className = img.className;
+    canvas.title = img.title;
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', img.alt);
+    img.replaceWith(canvas);
+  } catch (_) {
+    // leave the image as it is if anything about the swap goes wrong
+  }
+}
+
+// `load` doesn't bubble, so listen in the capture phase to catch emotes in
+// every chat line (including ones added later) with a single listener.
+document.addEventListener('load', (e) => {
+  const el = e.target;
+  if (el && el.tagName === 'IMG' && el.classList.contains('kick-emote') && !settings.animateEmotes) {
+    freezeEmote(el);
+  }
+}, true);
+
 function renderChatContent(content) {
   const text = String(content ?? '');
   let out = '';
@@ -155,6 +188,7 @@ function populateSettingsForm(s) {
   document.getElementById('chk-rate-xno').checked = !!s.showRateXno;
   document.getElementById('chk-keep-on-top').checked = s.keepOnTop !== false;
   document.getElementById('chk-low-impact').checked = !!s.lowImpactMode;
+  document.getElementById('chk-animate-emotes').checked = !!s.animateEmotes;
   document.getElementById('in-drop-decimals').value = s.dropDecimals != null ? s.dropDecimals : 4;
   document.getElementById('in-xno-decimals').value = s.xnoDecimals != null ? s.xnoDecimals : 2;
   document.getElementById('chk-obs').checked = !!s.obsEnabled;
@@ -655,7 +689,7 @@ function renderTwitchChatContent(message, emotesTag) {
     if (from < lastIndex) return; // overlapping data guard
     out += escapeHtml(text.slice(lastIndex, from));
     const name = text.slice(from, to);
-    out += `<img class="twitch-emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/default/dark/2.0" alt=":${escapeHtml(name)}:" title="${escapeHtml(name)}" loading="lazy" />`;
+    out += `<img class="twitch-emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/${settings.animateEmotes ? 'default' : 'static'}/dark/2.0" alt=":${escapeHtml(name)}:" title="${escapeHtml(name)}" loading="lazy" />`;
     lastIndex = to;
   });
   out += escapeHtml(text.slice(lastIndex));
@@ -2575,6 +2609,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     showRateXno: document.getElementById('chk-rate-xno').checked,
     keepOnTop: document.getElementById('chk-keep-on-top').checked,
     lowImpactMode: document.getElementById('chk-low-impact').checked,
+    animateEmotes: document.getElementById('chk-animate-emotes').checked,
     dropDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-drop-decimals').value) || 0)),
     xnoDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-xno-decimals').value) || 0)),
     obsEnabled: document.getElementById('chk-obs').checked,
