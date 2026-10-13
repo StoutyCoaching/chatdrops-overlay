@@ -1,9 +1,11 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, screen, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, screen, nativeImage, dialog, net, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const Store = require('electron-store');
 const io = require('socket.io-client');
 const os = require('os');
+const WebSocket = require('ws');
+const { createKickChat, REQUIRED_ORIGIN: KICK_ORIGIN } = require('./kick-chat');
 
 // Only one overlay at a time: a second copy would open a second window and a
 // second Streamlabs connection, and its global shortcuts would silently fail
@@ -141,6 +143,41 @@ function sendToRenderer(channel, payload) {
     mainWindow.webContents.send(channel, payload);
   }
 }
+
+// ---- Kick chat ----
+// Kick moved chat off Pusher onto its own server, which only accepts requests
+// carrying an Origin of https://kick.com. A web page can't set that header, so
+// the connection lives here in the main process and hands events to the page.
+// (Uses Chromium's network stack via net.request, same as a browser would.)
+function kickHttpPost(url, body) {
+  return new Promise((resolve, reject) => {
+    const req = net.request({ method: 'POST', url });
+    req.setHeader('Content-Type', 'application/json');
+    req.setHeader('Accept', 'application/json');
+    req.setHeader('Origin', KICK_ORIGIN);
+    req.setHeader('Referer', `${KICK_ORIGIN}/`);
+    const timer = setTimeout(() => { try { req.abort(); } catch (_) { /* noop */ } reject(new Error('timed out')); }, 10000);
+    req.on('response', (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => { clearTimeout(timer); resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }); });
+      res.on('error', (e) => { clearTimeout(timer); reject(e); });
+    });
+    req.on('error', (e) => { clearTimeout(timer); reject(e); });
+    req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+const kickChatOptions = {
+  httpPost: kickHttpPost,
+  WebSocketImpl: WebSocket,
+  userAgent: null, // set to the app's own browser user agent once it's ready (see whenReady)
+  onEvent: (evt) => sendToRenderer('kick-chat-event', evt),
+  onStatus: (text, cls) => sendToRenderer('kick-chat-status', { text, cls }),
+  log: (...args) => console.log('[kick-chat]', ...args)
+};
+const kickChat = createKickChat(kickChatOptions);
 
 function connectStreamlabs() {
   if (streamlabsSocket) {
@@ -879,6 +916,15 @@ function createTray() {
 
 app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return; // this is the duplicate launch – it's already quitting
+  kickChatOptions.userAgent = session.defaultSession.getUserAgent();
+  // Belt and braces for kickHttpPost: make sure Kick's server sees the Origin
+  // and Referer it requires even if net.request drops a header it considers its own.
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['https://web.kick.com/*'] }, (details, callback) => {
+    const headers = details.requestHeaders;
+    headers.Origin = KICK_ORIGIN;
+    headers.Referer = `${KICK_ORIGIN}/`;
+    callback({ requestHeaders: headers });
+  });
   createWindow();
   createTray();
   connectStreamlabs();
@@ -923,6 +969,7 @@ app.on('before-quit', flushWindowBounds);
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  kickChat.stop();
 });
 
 app.on('window-all-closed', () => {
@@ -937,6 +984,15 @@ function settingsPayload() {
 }
 
 ipcMain.handle('get-settings', () => settingsPayload());
+
+ipcMain.handle('kick-chat-start', (event, target) => {
+  if (!target || !target.chatroomId) return;
+  kickChat.start({ chatroomId: target.chatroomId, channelId: target.channelId });
+});
+
+ipcMain.handle('kick-chat-stop', () => {
+  kickChat.stop();
+});
 
 ipcMain.handle('renderer-ready', () => {
   REPLAYABLE_CHANNELS.forEach((channel) => {

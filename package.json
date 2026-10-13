@@ -1,6 +1,6 @@
 {
   "name": "kick-stream-overlay",
-  "version": "1.0.72",
+  "version": "1.0.73",
   "description": "Transparent always-on-top Kick chat + Streamlabs alert overlay for single-monitor streaming",
   "main": "main.js",
   "author": "Stouty",
@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "electron-store": "^8.2.0",
-    "socket.io-client": "^2.5.0"
+    "socket.io-client": "^2.5.0",
+    "ws": "^8.18.0"
   },
   "build": {
     "appId": "com.stouty.kickoverlay",
@@ -28,6 +29,7 @@
     },
     "files": [
       "main.js",
+      "kick-chat.js",
       "preload.js",
       "src/**/*",
       "assets/**/*"

@@ -24,5 +24,9 @@ contextBridge.exposeInMainWorld('overlay', {
   reconnectStreamlabs: () => ipcRenderer.invoke('reconnect-streamlabs'),
   // Called once the renderer has registered all its listeners, so main can
   // replay any status it sent earlier, while the page was still loading.
+  kickChatStart: (target) => ipcRenderer.invoke('kick-chat-start', target),
+  kickChatStop: () => ipcRenderer.invoke('kick-chat-stop'),
+  onKickChatEvent: (cb) => ipcRenderer.on('kick-chat-event', (_e, evt) => cb(evt)),
+  onKickChatStatus: (cb) => ipcRenderer.on('kick-chat-status', (_e, data) => cb(data)),
   rendererReady: () => ipcRenderer.invoke('renderer-ready')
 });

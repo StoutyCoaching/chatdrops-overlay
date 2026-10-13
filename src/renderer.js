@@ -6,8 +6,6 @@ const dragStripEl = document.getElementById('drag-strip');
 const MAX_LINES = 300;
 
 let settings = {};
-let kickSocket = null;
-let kickReconnectTimer = null;
 
 // ---------------------------------------------------------------------------
 // Startup loading indicator (next to the clock, until everything relevant
@@ -271,12 +269,12 @@ async function loadSettings() {
 }
 
 // ---------------------------------------------------------------------------
-// Kick chat – public Pusher websocket, no auth required.
-// Docs: unofficial, but stable in practice (see kick-api / KickLib projects).
+// Kick chat – public feed, no login needed. The connection itself lives in the
+// main process (kick-chat.js): since October 2026 Kick serves chat from its own
+// server rather than Pusher, and that server only accepts requests carrying an
+// Origin of https://kick.com, which a web page can't send. This side receives
+// the events and shows them.
 // ---------------------------------------------------------------------------
-
-const KICK_PUSHER_URL =
-  'wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false';
 
 // Brand colors used when the "force platform color" settings are on, and as
 // the fallback when a chatter has no color of their own to show.
@@ -380,34 +378,6 @@ async function fetchKickChannelInfo(slug) {
   }
 }
 
-// Same silent-drop protection as Twitch (see the watchdog notes there): a
-// connection can die without the browser ever firing "close" (sleep/wake,
-// Wi-Fi drop), leaving the status on "Connected" while chat sits frozen. Pusher
-// has a keep-alive for exactly this – if nothing has arrived for its
-// activity_timeout, the client pings, and the connection is treated as dead if
-// even that goes unanswered.
-const KICK_WATCHDOG_TICK_MS = 10000;
-const KICK_DEFAULT_ACTIVITY_TIMEOUT_MS = 120000;
-const KICK_PONG_TIMEOUT_MS = 30000;
-
-let kickWatchdogTimer = null;
-let kickLastActivity = 0;
-let kickActivityTimeoutMs = KICK_DEFAULT_ACTIVITY_TIMEOUT_MS;
-
-// Fully retires the current Kick connection. Handlers are detached *before*
-// closing: a closing socket's async "close" event would otherwise schedule a
-// reconnect that kills the replacement connection (see teardownTwitchSocket).
-function teardownKickSocket() {
-  clearTimeout(kickReconnectTimer);
-  clearInterval(kickWatchdogTimer);
-  const old = kickSocket;
-  kickSocket = null;
-  if (old) {
-    old.onopen = old.onmessage = old.onclose = old.onerror = null;
-    try { old.close(); } catch (_) { /* noop */ }
-  }
-}
-
 // Kick's event payloads arrive as a JSON string in envelope.data.
 function parseKickEventData(envelope) {
   try {
@@ -418,188 +388,147 @@ function parseKickEventData(envelope) {
   }
 }
 
-function connectKickChat(chatroomId) {
-  teardownKickSocket();
+// Handles one event from Kick's chat feed. The main process owns the connection
+// and passes each event over as { event, data } - the same shape the old Pusher
+// feed used, with `data` being a JSON string.
+function handleKickEnvelope(envelope) {
+  if (envelope.event === 'App\\Events\\ChatMessageEvent') {
+    const payload = parseKickEventData(envelope);
+    if (!payload) return;
 
+    const sender = payload.sender || {};
+    const color = settings.kickForcePlatformColor
+      ? KICK_BRAND_GREEN
+      : (sender.identity && sender.identity.color) || DEFAULT_CHAT_COLOR;
+    const badges = (sender.identity && sender.identity.badges) || [];
+    const userHtml = `<span class="user" style="color:${escapeHtml(color)}">${renderBadges(badges)}${escapeHtml(sender.username)}</span>`;
+    const contentHtml = `<span class="msg">${renderChatContent(payload.content)}</span>`;
+    const meta = { plat: 'kick', msgId: payload.id, userId: sender.id, names: [sender.username, sender.slug] };
+
+    // A resub-with-message (and possibly other "celebration" moments -
+    // Kick's own site shows a "celebrates their subscription..." banner
+    // above these) is still a genuine ChatMessageEvent with real content,
+    // not a separate socket event - Kick just tags it with a "type" other
+    // than the ordinary "message"/"reply" and attaches a "metadata.celebration"
+    // object. Field names here are a best guess (Kick's socket is
+    // undocumented), so any non-standard type is always logged too, to be
+    // corrected against a real payload.
+    if (payload.type && payload.type !== 'message' && payload.type !== 'reply') {
+      console.debug('[kick] non-standard chat message type', payload.type, payload);
+    }
+    const celebration = payload.metadata && payload.metadata.celebration;
+    const celebrationType = celebration && String(celebration.type || '').toLowerCase();
+    if (celebration && celebrationType.includes('subscription')) {
+      if (!settings.showSubs) return;
+      const months = celebration.total_duration || celebration.months || celebration.duration || celebration.cumulative_months;
+      addLine('sub plat-kick',
+        `<span class="tag">SUB</span>${userHtml} ${contentHtml}` +
+        (months ? ` <span class="amount">(${escapeHtml(String(months))} ${Number(months) === 1 ? 'month' : 'months'})</span>` : ''),
+        meta
+      );
+      return;
+    }
+
+    if (!settings.showChat) return;
+    addLine('chat', `${userHtml}: ${contentHtml}`, meta);
+    return;
+  }
+
+  // A moderator (or automod) deleted a message. Field names are from
+  // Kick's undocumented socket – the raw payload is logged to the DevTools
+  // console so they can be checked against a real one.
+  if (envelope.event === 'App\\Events\\MessageDeletedEvent') {
+    const payload = parseKickEventData(envelope);
+    console.debug('[kick] message deleted event', payload);
+    if (!payload) return;
+    const msgId = (payload.message && payload.message.id) || payload.message_id;
+    if (msgId) removeChatLines('kick', { msgId });
+    return;
+  }
+
+  // A ban or timeout (same event; a timeout just isn't "permanent"). Same
+  // caveat as above about the field names – logged for checking.
+  if (envelope.event === 'App\\Events\\UserBannedEvent') {
+    const payload = parseKickEventData(envelope);
+    console.debug('[kick] user banned/timed-out event', payload);
+    if (!payload) return;
+    const user = payload.user || {};
+    if (user.id != null || user.username || user.slug) {
+      removeChatLines('kick', { userId: user.id, names: [user.username, user.slug] });
+    }
+    return;
+  }
+
+  // Kick raids/hosts. Kick's official API has no raid event, but its chat
+  // socket has carried an undocumented "StreamHostEvent" – field names below
+  // are best guesses with fallbacks, and the raw payload is always logged
+  // (DevTools console) so they can be corrected against a real one.
+  if (envelope.event === 'App\\Events\\StreamHostEvent') {
+    let payload;
+    try { payload = typeof envelope.data === 'string' ? JSON.parse(envelope.data) : envelope.data; } catch (_) { return; }
+    payload = payload || {};
+    console.debug('[kick] raid/host event', payload);
+    const host = payload.host_username || payload.hostUsername || payload.username ||
+      (payload.host && (payload.host.username || payload.host.name)) || payload.name;
+    const viewers = payload.number_viewers ?? payload.numberViewers ?? payload.viewers ?? payload.viewer_count ?? payload.count;
+    showRaid('plat-kick', host, viewers);
+    return;
+  }
+
+  // Anything else (pins, mode changes, and any undocumented gift-related
+  // events that occasionally ride the same socket) is logged rather than shown,
+  // since alerts are handled through Streamlabs instead. Useful if you want to
+  // inspect what Kick actually sends here.
+  if (envelope.event && envelope.event.startsWith('App\\Events\\')) {
+    console.debug('[kick] unhandled event', envelope.event, envelope.data);
+  }
+}
+
+overlay.onKickChatEvent((envelope) => {
+  if (envelope && typeof envelope === 'object') handleKickEnvelope(envelope);
+});
+overlay.onKickChatStatus((info) => {
+  if (info && info.text) setKickStatus(info.text, info.cls);
+});
+
+function connectKickChat(chatroomId, channelId) {
   if (!chatroomId) {
+    overlay.kickChatStop();
     setKickStatus('No chatroom configured', 'err');
     return;
   }
-
   setKickStatus('Connecting to chat…');
-  // Handlers close over this specific socket (ws), not the shared kickSocket
-  // variable, so a stale socket can never act for the live one.
-  const ws = new WebSocket(KICK_PUSHER_URL);
-  kickSocket = ws;
-  kickLastActivity = Date.now();
-  kickActivityTimeoutMs = KICK_DEFAULT_ACTIVITY_TIMEOUT_MS;
-
-  ws.onmessage = (raw) => {
-    if (kickSocket !== ws) return;
-    kickLastActivity = Date.now();
-
-    let envelope;
-    try {
-      envelope = JSON.parse(raw.data);
-    } catch (_) {
-      return;
-    }
-
-    // Pusher's own keep-alive: the server pings, and the client is expected to
-    // pong (standard Pusher clients all do). Never answering it risks the
-    // server eventually dropping an otherwise-healthy connection.
-    if (envelope.event === 'pusher:ping') {
-      try { ws.send(JSON.stringify({ event: 'pusher:pong', data: {} })); } catch (_) { /* onclose will handle it */ }
-      return;
-    }
-
-    if (envelope.event === 'pusher:connection_established') {
-      // The server says how long it's happy to wait between messages.
-      const info = parseKickEventData(envelope);
-      const serverTimeoutSec = info && Number(info.activity_timeout);
-      if (serverTimeoutSec > 0) {
-        kickActivityTimeoutMs = Math.max(15000, Math.min(KICK_DEFAULT_ACTIVITY_TIMEOUT_MS, serverTimeoutSec * 1000));
-      }
-      ws.send(JSON.stringify({
-        event: 'pusher:subscribe',
-        data: { auth: '', channel: `chatrooms.${chatroomId}.v2` }
-      }));
-      setKickStatus('Connected');
-      return;
-    }
-
-    if (envelope.event === 'App\\Events\\ChatMessageEvent') {
-      const payload = parseKickEventData(envelope);
-      if (!payload) return;
-
-      const sender = payload.sender || {};
-      const color = settings.kickForcePlatformColor
-        ? KICK_BRAND_GREEN
-        : (sender.identity && sender.identity.color) || DEFAULT_CHAT_COLOR;
-      const badges = (sender.identity && sender.identity.badges) || [];
-      const userHtml = `<span class="user" style="color:${escapeHtml(color)}">${renderBadges(badges)}${escapeHtml(sender.username)}</span>`;
-      const contentHtml = `<span class="msg">${renderChatContent(payload.content)}</span>`;
-      const meta = { plat: 'kick', msgId: payload.id, userId: sender.id, names: [sender.username, sender.slug] };
-
-      // A resub-with-message (and possibly other "celebration" moments -
-      // Kick's own site shows a "celebrates their subscription..." banner
-      // above these) is still a genuine ChatMessageEvent with real content,
-      // not a separate socket event - Kick just tags it with a "type" other
-      // than the ordinary "message"/"reply" and attaches a "metadata.celebration"
-      // object. Field names here are a best guess (Kick's socket is
-      // undocumented), so any non-standard type is always logged too, to be
-      // corrected against a real payload.
-      if (payload.type && payload.type !== 'message' && payload.type !== 'reply') {
-        console.debug('[kick] non-standard chat message type', payload.type, payload);
-      }
-      const celebration = payload.metadata && payload.metadata.celebration;
-      const celebrationType = celebration && String(celebration.type || '').toLowerCase();
-      if (celebration && celebrationType.includes('subscription')) {
-        if (!settings.showSubs) return;
-        const months = celebration.total_duration || celebration.months || celebration.duration || celebration.cumulative_months;
-        addLine('sub plat-kick',
-          `<span class="tag">SUB</span>${userHtml} ${contentHtml}` +
-          (months ? ` <span class="amount">(${escapeHtml(String(months))} ${Number(months) === 1 ? 'month' : 'months'})</span>` : ''),
-          meta
-        );
-        return;
-      }
-
-      if (!settings.showChat) return;
-      addLine('chat', `${userHtml}: ${contentHtml}`, meta);
-      return;
-    }
-
-    // A moderator (or automod) deleted a message. Field names are from
-    // Kick's undocumented socket – the raw payload is logged to the DevTools
-    // console so they can be checked against a real one.
-    if (envelope.event === 'App\\Events\\MessageDeletedEvent') {
-      const payload = parseKickEventData(envelope);
-      console.debug('[kick] message deleted event', payload);
-      if (!payload) return;
-      const msgId = (payload.message && payload.message.id) || payload.message_id;
-      if (msgId) removeChatLines('kick', { msgId });
-      return;
-    }
-
-    // A ban or timeout (same event; a timeout just isn't "permanent"). Same
-    // caveat as above about the field names – logged for checking.
-    if (envelope.event === 'App\\Events\\UserBannedEvent') {
-      const payload = parseKickEventData(envelope);
-      console.debug('[kick] user banned/timed-out event', payload);
-      if (!payload) return;
-      const user = payload.user || {};
-      if (user.id != null || user.username || user.slug) {
-        removeChatLines('kick', { userId: user.id, names: [user.username, user.slug] });
-      }
-      return;
-    }
-
-    // Kick raids/hosts. Kick's official API has no raid event, but its chat
-    // socket has carried an undocumented "StreamHostEvent" – field names below
-    // are best guesses with fallbacks, and the raw payload is always logged
-    // (DevTools console) so they can be corrected against a real one.
-    if (envelope.event === 'App\\Events\\StreamHostEvent') {
-      let payload;
-      try { payload = typeof envelope.data === 'string' ? JSON.parse(envelope.data) : envelope.data; } catch (_) { return; }
-      payload = payload || {};
-      console.debug('[kick] raid/host event', payload);
-      const host = payload.host_username || payload.hostUsername || payload.username ||
-        (payload.host && (payload.host.username || payload.host.name)) || payload.name;
-      const viewers = payload.number_viewers ?? payload.numberViewers ?? payload.viewers ?? payload.viewer_count ?? payload.count;
-      showRaid('plat-kick', host, viewers);
-      return;
-    }
-
-    // Anything else (pins, mode changes, and any undocumented gift-related
-    // events that occasionally ride the same socket) is logged rather than shown,
-    // since alerts are handled through Streamlabs instead. Useful if you want to
-    // inspect what Kick actually sends here.
-    if (envelope.event && envelope.event.startsWith('App\\Events\\')) {
-      console.debug('[kick] unhandled event', envelope.event, envelope.data);
-    }
-  };
-
-  ws.onclose = () => {
-    if (kickSocket !== ws) return; // a retired socket closing – nothing to do
-    clearInterval(kickWatchdogTimer);
-    setKickStatus('Disconnected, retrying…', 'err');
-    kickReconnectTimer = setTimeout(() => connectKickChat(chatroomId), 4000);
-  };
-
-  ws.onerror = () => {
-    // onclose will fire right after; the reconnect is handled there.
-  };
-
-  kickWatchdogTimer = setInterval(() => {
-    if (kickSocket !== ws || ws.readyState !== WebSocket.OPEN) return;
-    const idle = Date.now() - kickLastActivity;
-    if (idle > kickActivityTimeoutMs + KICK_PONG_TIMEOUT_MS) {
-      console.warn('[kick] connection went silent – reconnecting');
-      setKickStatus('Disconnected, retrying…', 'err');
-      connectKickChat(chatroomId);
-    } else if (idle > kickActivityTimeoutMs) {
-      try { ws.send(JSON.stringify({ event: 'pusher:ping', data: {} })); } catch (_) { /* onclose will handle it */ }
-    }
-  }, KICK_WATCHDOG_TICK_MS);
+  // The main process connects, keeps the link alive and reconnects when it drops.
+  overlay.kickChatStart({ chatroomId, channelId });
 }
 
 async function startKickChat() {
-  if (settings.kickChatroomId) {
-    connectKickChat(settings.kickChatroomId.trim());
+  const slug = (settings.kickChannel || '').trim();
+  let chatroomId = (settings.kickChatroomId || '').trim();
+  let channelId = null;
+  let lookupError = null;
+
+  // Kick's chat server is looked up by channel id, so the channel is resolved
+  // even when a chatroom id was entered by hand. If that lookup fails but a
+  // chatroom id is known, chat still connects (via Kick's general server).
+  if (slug) {
+    setKickStatus('Looking up chatroom…');
+    try {
+      const info = await fetchKickChannelInfo(slug);
+      if (info && info.id) channelId = info.id;
+      if (!chatroomId && info && info.chatroom && info.chatroom.id) chatroomId = String(info.chatroom.id);
+    } catch (err) {
+      lookupError = err;
+    }
+  }
+
+  if (!chatroomId) {
+    overlay.kickChatStop();
+    if (!slug) setKickStatus('No channel set – open settings');
+    else setKickStatus(`Auto-detect failed (${lookupError ? lookupError.message : 'No chatroom in response'}) – enter Chatroom ID manually`, 'err');
     return;
   }
-  if (!settings.kickChannel) {
-    setKickStatus('No channel set – open settings');
-    return;
-  }
-  setKickStatus('Looking up chatroom…');
-  try {
-    const id = await resolveChatroomId(settings.kickChannel);
-    connectKickChat(id);
-  } catch (err) {
-    setKickStatus(`Auto-detect failed (${err.message}) – enter Chatroom ID manually`, 'err');
-  }
+  connectKickChat(chatroomId, channelId);
 }
 
 // ---------------------------------------------------------------------------
