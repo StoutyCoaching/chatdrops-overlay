@@ -46,7 +46,7 @@ const store = new Store({
     showRateXno: false,
     keepOnTop: true,
     animateEmotes: false,
-    lowImpactMode: false,
+    useIntegratedGpu: true,
     dropDecimals: 4,
     xnoDecimals: 2,
     obsEnabled: false,
@@ -67,9 +67,6 @@ const store = new Store({
   }
 });
 
-// Low-impact mode: render the overlay on the CPU instead of the GPU, so it
-// doesn't compete with the game for GPU time. Has to be decided before the app
-// is ready, so changing it in Settings needs a restart.
 // Which custom badge images exist in assets/badges (names without .png).
 // The renderer only asks for a badge image that's in this list - requesting
 // files that aren't there fails once per badge on every chat message, which
@@ -85,11 +82,60 @@ function listCustomBadges() {
 }
 const customBadges = listCustomBadges();
 
-// lowImpactActive records the mode this run actually started in (the saved
-// setting can change mid-run but only takes effect on the next launch); it's
-// reported to the renderer so mode-specific styling matches what's running.
-const lowImpactActive = !!store.get('lowImpactMode');
-if (lowImpactActive) app.disableHardwareAcceleration();
+// Setting from the removed low-impact (CPU rendering) mode; nothing reads it now.
+store.delete('lowImpactMode');
+
+// ---- Integrated graphics (Windows "Power saving" GPU preference) ----
+// Windows lets each app be pinned to the power-saving GPU (on a desktop CPU
+// with built-in graphics, that's the integrated one) in Settings > System >
+// Display > Graphics. This does the same thing for the overlay's own exe, so
+// its drawing stays off the main GPU the game is using. Windows reads the
+// preference when a process starts, so a change only takes effect on the next
+// launch; if startup has to change it, the overlay restarts itself once.
+const { execFileSync } = require('child_process');
+const GPU_PREF_KEY = 'HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences';
+
+function readGpuPrefValue() {
+  try {
+    const out = execFileSync('reg', ['query', GPU_PREF_KEY, '/v', process.execPath], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    const m = out.match(/REG_SZ\s+(.*)\r?$/m);
+    return m ? m[1].trim() : '';
+  } catch (_) {
+    return ''; // no entry yet
+  }
+}
+
+// Sets (enabled) or clears (disabled) GpuPreference=1 for this exe, leaving any
+// other flags Windows keeps in the same value (e.g. windowed-game optimisation)
+// alone. Returns true when the registry actually changed.
+function applyIntegratedGpuPreference(enabled) {
+  if (process.platform !== 'win32' || !app.isPackaged) return false;
+  const current = readGpuPrefValue();
+  const parts = current.split(';').map((x) => x.trim()).filter(Boolean);
+  const others = parts.filter((x) => !/^GpuPreference=/i.test(x));
+  const hadPower = parts.some((x) => /^GpuPreference=1$/i.test(x));
+  if (enabled === hadPower) return false;
+  const next = enabled ? ['GpuPreference=1', ...others] : others;
+  try {
+    if (next.length) {
+      execFileSync('reg', ['add', GPU_PREF_KEY, '/v', process.execPath, '/t', 'REG_SZ', '/d', `${next.join(';')};`, '/f'], { windowsHide: true, stdio: 'ignore' });
+    } else {
+      execFileSync('reg', ['delete', GPU_PREF_KEY, '/v', process.execPath, '/f'], { windowsHide: true, stdio: 'ignore' });
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// At launch only the "on" side is enforced, so someone who set the Windows
+// preference by hand isn't overridden while the option is off. Turning it off in
+// Settings clears it (see 'set-settings').
+if (gotSingleInstanceLock && store.get('useIntegratedGpu') && applyIntegratedGpuPreference(true)) {
+  app.releaseSingleInstanceLock();
+  app.relaunch();
+  app.exit(0);
+}
 
 // Chromium builds (and keeps updating) an accessibility tree whenever any
 // Windows tool says it's listening, and every new chat line then costs extra
@@ -980,7 +1026,7 @@ app.on('window-all-closed', () => {
 // What the renderer gets: the saved settings plus facts about this run that
 // aren't saved settings (rendering mode in use, which badge images exist).
 function settingsPayload() {
-  return { ...store.store, lowImpactActive, customBadges };
+  return { ...store.store, customBadges };
 }
 
 ipcMain.handle('get-settings', () => settingsPayload());
@@ -1007,6 +1053,7 @@ ipcMain.handle('set-settings', (event, patch) => {
   store.set(patch);
   if (tokenChanged) connectStreamlabs();
   if ('keepOnTop' in patch) applyKeepOnTop(!!patch.keepOnTop);
+  if ('useIntegratedGpu' in patch) applyIntegratedGpuPreference(!!patch.useIntegratedGpu);
   if ('nanodropsFaucetId' in patch || 'nanodropsFaucetId2' in patch || 'showNanodrops' in patch) {
     pruneNanodropsState();
     pollNanodrops({ force: true });

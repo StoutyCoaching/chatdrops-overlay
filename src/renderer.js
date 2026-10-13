@@ -97,56 +97,12 @@ function renderChatContent(content) {
   return out;
 }
 
-// Whether the feed is scrolled to (near) the bottom, kept up to date by the
-// scroll event so addLine doesn't have to read the feed's size - which forces
-// the browser to redo layout - before every single message.
-let feedPinnedToBottom = true;
-feedEl.addEventListener('scroll', () => {
-  feedPinnedToBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 60;
-}, { passive: true });
-
-// New lines are collected and added to the feed together at the next screen
-// refresh (about 16ms later; never more than 50ms), so a burst of messages is
-// one layout, one scroll and one repaint instead of one each. The timer is a
-// backstop in case frames aren't being produced (e.g. the window is hidden).
-const pendingLines = document.createDocumentFragment();
-let pendingLineCount = 0;
-let lineFlushScheduled = false;
-
-function flushPendingLines() {
-  if (pendingLineCount === 0) return;
-  const wasNearBottom = feedPinnedToBottom;
-  // A cached emote can finish loading while its line is still waiting here,
-  // and a load event on a detached element never reaches the document-level
-  // listener (see freezeEmote), so freeze any that are already done.
-  const waitingEmotes = settings.animateEmotes ? [] : Array.from(pendingLines.querySelectorAll('img.kick-emote'));
-  feedEl.appendChild(pendingLines);
-  pendingLineCount = 0;
-  waitingEmotes.forEach((img) => { if (img.complete) freezeEmote(img); });
-
-  while (feedEl.children.length > MAX_LINES) {
-    feedEl.removeChild(feedEl.firstChild);
-  }
-
-  if (wasNearBottom) feedEl.scrollTop = feedEl.scrollHeight;
-}
-
-function scheduleLineFlush() {
-  if (lineFlushScheduled) return;
-  lineFlushScheduled = true;
-  const run = () => {
-    if (!lineFlushScheduled) return;
-    lineFlushScheduled = false;
-    flushPendingLines();
-  };
-  requestAnimationFrame(run);
-  setTimeout(run, 50);
-}
-
 // `meta` (chat lines only) records who/what a line came from – platform,
 // message id, user id and name(s) – so it can be taken back out of the feed if
 // the message is later deleted or its author is banned/timed out.
 function addLine(type, html, meta) {
+  const wasNearBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 60;
+
   const div = document.createElement('div');
   div.className = `line ${type}`;
   div.dataset.ts = Date.now(); // used by clearFeed()'s new-message grace period
@@ -158,9 +114,13 @@ function addLine(type, html, meta) {
     if (names.length) div.dataset.names = names.join('|');
   }
   div.innerHTML = html;
-  pendingLines.appendChild(div);
-  pendingLineCount += 1;
-  scheduleLineFlush();
+  feedEl.appendChild(div);
+
+  while (feedEl.children.length > MAX_LINES) {
+    feedEl.removeChild(feedEl.firstChild);
+  }
+
+  if (wasNearBottom) feedEl.scrollTop = feedEl.scrollHeight;
 }
 
 // Takes chat lines back out of the feed after a moderation action on that
@@ -169,7 +129,6 @@ function addLine(type, html, meta) {
 // when a platform's event doesn't carry an id). Only chat lines are touched –
 // alerts stay put.
 function removeChatLines(plat, { msgId, userId, names } = {}) {
-  flushPendingLines();
   const wantedNames = (names || []).filter(Boolean).map((n) => String(n).toLowerCase());
   Array.from(feedEl.children).forEach((el) => {
     if (!el.classList.contains('chat') || el.dataset.plat !== plat) return;
@@ -189,7 +148,6 @@ const DEFAULT_CLEAR_CHAT_GRACE_MS = 3000;
 
 function clearFeed() {
   const graceMs = settings.clearChatGraceMs != null ? settings.clearChatGraceMs : DEFAULT_CLEAR_CHAT_GRACE_MS;
-  flushPendingLines();
   const cutoff = Date.now() - graceMs;
   Array.from(feedEl.children).forEach((el) => {
     const ts = Number(el.dataset.ts || 0);
@@ -205,7 +163,6 @@ function applyAppearance(s) {
   document.documentElement.style.setProperty('--font-size', `${s.fontSize}px`);
   document.documentElement.style.setProperty('--bg-opacity', s.bgOpacity);
   document.documentElement.style.setProperty('--drag-bar-opacity', s.dragBarOpacity != null ? s.dragBarOpacity : 0.35);
-  document.body.classList.toggle('low-impact', !!s.lowImpactActive);
 }
 
 function populateSettingsForm(s) {
@@ -234,7 +191,7 @@ function populateSettingsForm(s) {
   document.getElementById('chk-rate-usd').checked = s.showRateUsd !== false;
   document.getElementById('chk-rate-xno').checked = !!s.showRateXno;
   document.getElementById('chk-keep-on-top').checked = s.keepOnTop !== false;
-  document.getElementById('chk-low-impact').checked = !!s.lowImpactMode;
+  document.getElementById('chk-igpu').checked = s.useIntegratedGpu !== false;
   document.getElementById('chk-animate-emotes').checked = !!s.animateEmotes;
   document.getElementById('in-drop-decimals').value = s.dropDecimals != null ? s.dropDecimals : 4;
   document.getElementById('in-xno-decimals').value = s.xnoDecimals != null ? s.xnoDecimals : 2;
@@ -2586,7 +2543,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     showRateUsd: document.getElementById('chk-rate-usd').checked,
     showRateXno: document.getElementById('chk-rate-xno').checked,
     keepOnTop: document.getElementById('chk-keep-on-top').checked,
-    lowImpactMode: document.getElementById('chk-low-impact').checked,
+    useIntegratedGpu: document.getElementById('chk-igpu').checked,
     animateEmotes: document.getElementById('chk-animate-emotes').checked,
     dropDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-drop-decimals').value) || 0)),
     xnoDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-xno-decimals').value) || 0)),
