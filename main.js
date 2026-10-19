@@ -142,6 +142,15 @@ if (gotSingleInstanceLock && store.get('useIntegratedGpu') && applyIntegratedGpu
 // work. A game overlay doesn't need screen-reader support, so switch it off.
 app.commandLine.appendSwitch('disable-renderer-accessibility');
 
+// Chromium pauses rendering and timers for a window Windows reports as covered
+// by another window (a fullscreen or borderless game, say) and for a process it
+// judges to be in the background. For an overlay that has to react to key binds
+// while a game is in front, that looks like the binds "stop working" until the
+// window is clicked. Switch both behaviours off.
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
 // Run the overlay at below-normal CPU priority so the game always wins when
 // the two compete. Windows child processes inherit this from the parent, and
 // it's re-applied to every Electron process once the window is up (the GPU and
@@ -876,6 +885,41 @@ function applyToggleVisibilityShortcut(accelerator) {
   return result;
 }
 
+// Windows can quietly drop a global hotkey (after sleep, a screen lock, a
+// display change or a full-screen app taking over), after which the bind does
+// nothing until the overlay is clicked. Electron can't tell that happened, so
+// every so often - and on the events that usually cause it - each bind is
+// unregistered and registered again, which costs nothing and restores it. A key
+// that another app has grabbed in the meantime stays on the list and is retried
+// next time, rather than being forgotten.
+const SHORTCUT_REFRESH_INTERVAL_MS = 30000;
+let shortcutRefreshTimer = null;
+
+function refreshShortcuts() {
+  const binds = [
+    [currentLockAccelerator, () => setClickThrough(!locked)],
+    [currentClearChatAccelerator, () => sendToRenderer('clear-chat')],
+    [currentBookmarkAccelerator, () => sendToRenderer('bookmark-requested')],
+    [currentToggleVisibilityAccelerator, toggleOverlayVisibility]
+  ];
+  binds.forEach(([accelerator, handler]) => {
+    if (!accelerator) return;
+    try { globalShortcut.unregister(accelerator); } catch (_) { /* not registered */ }
+    tryRegisterShortcut(accelerator, handler);
+  });
+}
+
+function startShortcutRefresh() {
+  clearInterval(shortcutRefreshTimer);
+  shortcutRefreshTimer = setInterval(refreshShortcuts, SHORTCUT_REFRESH_INTERVAL_MS);
+  const { powerMonitor } = require('electron');
+  powerMonitor.on('resume', refreshShortcuts);
+  powerMonitor.on('unlock-screen', refreshShortcuts);
+  screen.on('display-metrics-changed', refreshShortcuts);
+  screen.on('display-added', refreshShortcuts);
+  screen.on('display-removed', refreshShortcuts);
+}
+
 // Called by the renderer whenever "is any platform live" changes, so this
 // process (which owns the bookmark file) knows when a session starts/ends.
 function noteBookmarkLiveState(anyLive) {
@@ -998,6 +1042,7 @@ app.whenReady().then(() => {
   if (!applyToggleVisibilityShortcut(store.get('toggleVisibilityShortcut')).ok) {
     applyToggleVisibilityShortcut('F23');
   }
+  startShortcutRefresh();
   // (DevTools' Ctrl+Shift+I is handled per-window in createWindow() – it used
   // to be a *global* shortcut here, which stole that combo from every other
   // app on the machine, including DevTools in Chrome, Edge and Discord.)
@@ -1014,6 +1059,7 @@ app.on('second-instance', () => showAndFocusWindow());
 app.on('before-quit', flushWindowBounds);
 
 app.on('will-quit', () => {
+  clearInterval(shortcutRefreshTimer);
   globalShortcut.unregisterAll();
   kickChat.stop();
 });
