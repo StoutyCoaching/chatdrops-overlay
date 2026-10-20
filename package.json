@@ -1,6 +1,6 @@
 {
   "name": "kick-stream-overlay",
-  "version": "1.0.77",
+  "version": "1.0.78",
   "description": "Transparent always-on-top Kick chat + Streamlabs alert overlay for single-monitor streaming",
   "main": "main.js",
   "author": "Stouty",
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "electron-store": "^8.2.0",
+    "koffi": "2.16.3",
     "socket.io-client": "^2.5.0",
     "ws": "^8.18.0"
   },
@@ -32,7 +33,8 @@
       "kick-chat.js",
       "preload.js",
       "src/**/*",
-      "assets/**/*"
+      "assets/**/*",
+      "!node_modules/koffi/build/koffi/{darwin_arm64,darwin_x64,freebsd_arm64,freebsd_ia32,freebsd_x64,linux_arm64,linux_armhf,linux_ia32,linux_loong64,linux_riscv64d,linux_x64,musl_arm64,musl_x64,openbsd_ia32,openbsd_x64,win32_arm64,win32_ia32}/**"
     ]
   }
 }

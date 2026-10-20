@@ -806,6 +806,123 @@ function createWindow() {
   });
 }
 
+// ---- Key-state backup for the binds ----
+// RegisterHotKey (what globalShortcut uses) only works while Windows delivers
+// the press to us as a hotkey. Some games and tools in the foreground stop that
+// from happening. So each bind is also checked by asking Windows directly
+// whether the key is down (GetAsyncKeyState), about 60 times a second. That
+// needs no keyboard hook and doesn't watch the mouse; it only looks at the keys
+// that are bound. Both paths share one de-dupe, so a press that reaches both
+// only fires once. If the call can't be set up, the binds behave as before.
+let GetAsyncKeyState = null;
+if (process.platform === 'win32') {
+  try {
+    const koffi = require('koffi');
+    GetAsyncKeyState = koffi.load('user32.dll').func('int16_t __stdcall GetAsyncKeyState(int vKey)');
+  } catch (err) {
+    console.warn('[shortcut] key-state backup unavailable, using RegisterHotKey only:', err && err.message);
+  }
+}
+const pollBinds = new Map(); // accelerator -> { key, ctrl, alt, shift, meta, handler, wasDown }
+const lastBindFire = new Map(); // accelerator -> timestamp of last fire
+let pollTimer = null;
+
+const VK_NAMED = {
+  space: 0x20, esc: 0x1B, escape: 0x1B, return: 0x0D, enter: 0x0D, tab: 0x09, backspace: 0x08,
+  delete: 0x2E, insert: 0x2D, home: 0x24, end: 0x23, pageup: 0x21, pagedown: 0x22,
+  up: 0x26, down: 0x28, left: 0x25, right: 0x27, capslock: 0x14, numlock: 0x90,
+  scrolllock: 0x91, printscreen: 0x2C
+};
+const VK_PUNCT = {
+  '`': 0xC0, '-': 0xBD, '=': 0xBB, '[': 0xDB, ']': 0xDD, '\\': 0xDC,
+  ';': 0xBA, "'": 0xDE, ',': 0xBC, '.': 0xBE, '/': 0xBF
+};
+
+// Electron accelerator ("Control+Shift+L", "F22") -> Windows virtual-key code
+// plus required modifiers, or null for keys this can't express (media keys and
+// the like stay RegisterHotKey-only).
+function parseAcceleratorToVk(accelerator) {
+  const out = { key: null, ctrl: false, alt: false, shift: false, meta: false };
+  let main = null;
+  for (const raw of String(accelerator).split('+')) {
+    const p = raw.toLowerCase();
+    if (p === 'control' || p === 'ctrl' || p === 'commandorcontrol' || p === 'cmdorctrl') out.ctrl = true;
+    else if (p === 'alt' || p === 'option') out.alt = true;
+    else if (p === 'shift') out.shift = true;
+    else if (p === 'super' || p === 'meta' || p === 'cmd' || p === 'command') out.meta = true;
+    else if (main === null && raw !== '') main = raw;
+    else return null;
+  }
+  if (main === null) return null;
+  const lower = main.toLowerCase();
+  let vk = null;
+  if (VK_NAMED[lower] !== undefined) vk = VK_NAMED[lower];
+  else if (/^f([1-9]|1[0-9]|2[0-4])$/i.test(main)) vk = 0x70 + parseInt(main.slice(1), 10) - 1;
+  else if (/^[a-z]$/i.test(main)) vk = main.toUpperCase().charCodeAt(0);
+  else if (/^[0-9]$/.test(main)) vk = main.charCodeAt(0);
+  else if (VK_PUNCT[main] !== undefined) vk = VK_PUNCT[main];
+  if (vk === null) return null;
+  out.key = vk;
+  return out;
+}
+
+function keyIsDown(vk) {
+  return (GetAsyncKeyState(vk) & 0x8000) !== 0;
+}
+
+function pollBindKeys() {
+  for (const b of pollBinds.values()) {
+    let state;
+    try { state = GetAsyncKeyState(b.key); } catch (_) { continue; }
+    const down = (state & 0x8000) !== 0;
+    // Bit 0 = "pressed since the last check", which also catches a tap that
+    // came and went between two checks (macro keys can be that quick).
+    const tapped = (state & 1) !== 0 && !down;
+    const pressed = (down && !b.wasDown) || tapped;
+    b.wasDown = down;
+    if (!pressed) continue;
+    try {
+      if (b.ctrl !== keyIsDown(0x11) || b.alt !== keyIsDown(0x12) || b.shift !== keyIsDown(0x10)) continue;
+      if (b.meta !== (keyIsDown(0x5B) || keyIsDown(0x5C))) continue;
+      b.handler();
+    } catch (err) {
+      console.warn('[shortcut] key-state handler failed:', err && err.message);
+    }
+  }
+}
+
+function addPollBind(accelerator, parsed, handler) {
+  let wasDown = false;
+  try { wasDown = keyIsDown(parsed.key); } catch (_) { /* first read also clears stale "pressed" history */ }
+  pollBinds.set(accelerator, { ...parsed, handler, wasDown });
+  if (!pollTimer) pollTimer = setInterval(pollBindKeys, 16);
+}
+
+function stopBindPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+  pollBinds.clear();
+}
+
+// Wraps a bind's handler so one press can't fire twice (once from each path)
+// and a held key doesn't repeat it.
+function guardBind(accelerator, handler) {
+  return () => {
+    const now = Date.now();
+    if (now - (lastBindFire.get(accelerator) || 0) < 250) return;
+    lastBindFire.set(accelerator, now);
+    handler();
+  };
+}
+
+// Drops a bind from both paths.
+function releaseShortcut(accelerator) {
+  if (!accelerator) return;
+  try { globalShortcut.unregister(accelerator); } catch (_) { /* not registered */ }
+  pollBinds.delete(accelerator);
+}
+
+
 // globalShortcut.register() *throws* (rather than returning false) when handed
 // an accelerator string Electron can't parse – e.g. a bare "+", or a key name
 // it doesn't know. That used to propagate all the way back to the settings
@@ -815,12 +932,19 @@ function createWindow() {
 //   { ok: false, invalid: false } – valid, but already taken by something else
 //   { ok: false, invalid: true }  – not an accelerator Electron understands
 function tryRegisterShortcut(accelerator, handler) {
+  const guarded = guardBind(accelerator, handler);
+  let registered = false;
   try {
-    return { ok: !!globalShortcut.register(accelerator, handler), invalid: false };
+    registered = !!globalShortcut.register(accelerator, guarded);
   } catch (err) {
     console.warn(`[shortcut] could not register "${accelerator}":`, err && err.message);
     return { ok: false, invalid: true };
   }
+  // Even when Windows refused the registration (another app owns the key), the
+  // key-state check can still serve the bind, so that counts as success.
+  const parsed = GetAsyncKeyState ? parseAcceleratorToVk(accelerator) : null;
+  if (parsed) addPollBind(accelerator, parsed, guarded);
+  return { ok: registered || !!parsed, invalid: false };
 }
 
 // Tries to register `accelerator` for the lock/click-through toggle. On
@@ -832,7 +956,7 @@ function applyLockShortcut(accelerator) {
   if (currentLockAccelerator === accelerator) return { ok: true, invalid: false };
   const result = tryRegisterShortcut(accelerator, () => setClickThrough(!locked));
   if (!result.ok) return result;
-  if (currentLockAccelerator) globalShortcut.unregister(currentLockAccelerator);
+  releaseShortcut(currentLockAccelerator);
   currentLockAccelerator = accelerator;
   return result;
 }
@@ -844,7 +968,7 @@ function applyClearChatShortcut(accelerator) {
   if (currentClearChatAccelerator === accelerator) return { ok: true, invalid: false };
   const result = tryRegisterShortcut(accelerator, () => sendToRenderer('clear-chat'));
   if (!result.ok) return result;
-  if (currentClearChatAccelerator) globalShortcut.unregister(currentClearChatAccelerator);
+  releaseShortcut(currentClearChatAccelerator);
   currentClearChatAccelerator = accelerator;
   return result;
 }
@@ -857,7 +981,7 @@ function applyBookmarkShortcut(accelerator) {
   if (currentBookmarkAccelerator === accelerator) return { ok: true, invalid: false };
   const result = tryRegisterShortcut(accelerator, () => sendToRenderer('bookmark-requested'));
   if (!result.ok) return result;
-  if (currentBookmarkAccelerator) globalShortcut.unregister(currentBookmarkAccelerator);
+  releaseShortcut(currentBookmarkAccelerator);
   currentBookmarkAccelerator = accelerator;
   return result;
 }
@@ -881,7 +1005,7 @@ function applyToggleVisibilityShortcut(accelerator) {
   if (currentToggleVisibilityAccelerator === accelerator) return { ok: true, invalid: false };
   const result = tryRegisterShortcut(accelerator, toggleOverlayVisibility);
   if (!result.ok) return result;
-  if (currentToggleVisibilityAccelerator) globalShortcut.unregister(currentToggleVisibilityAccelerator);
+  releaseShortcut(currentToggleVisibilityAccelerator);
   currentToggleVisibilityAccelerator = accelerator;
   return result;
 }
@@ -1025,6 +1149,7 @@ app.on('before-quit', flushWindowBounds);
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  stopBindPolling();
   kickChat.stop();
 });
 
