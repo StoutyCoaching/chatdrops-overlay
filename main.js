@@ -45,7 +45,6 @@ const store = new Store({
     showRateUsd: true,
     showRateXno: false,
     keepOnTop: true,
-    animateEmotes: false,
     useIntegratedGpu: true,
     dropDecimals: 4,
     xnoDecimals: 2,
@@ -84,6 +83,8 @@ const customBadges = listCustomBadges();
 
 // Setting from the removed low-impact (CPU rendering) mode; nothing reads it now.
 store.delete('lowImpactMode');
+// Setting from the removed "Animate emotes" option; emotes always animate now.
+store.delete('animateEmotes');
 
 // ---- Integrated graphics (Windows "Power saving" GPU preference) ----
 // Windows lets each app be pinned to the power-saving GPU (on a desktop CPU
@@ -885,41 +886,6 @@ function applyToggleVisibilityShortcut(accelerator) {
   return result;
 }
 
-// Windows can quietly drop a global hotkey (after sleep, a screen lock, a
-// display change or a full-screen app taking over), after which the bind does
-// nothing until the overlay is clicked. Electron can't tell that happened, so
-// every so often - and on the events that usually cause it - each bind is
-// unregistered and registered again, which costs nothing and restores it. A key
-// that another app has grabbed in the meantime stays on the list and is retried
-// next time, rather than being forgotten.
-const SHORTCUT_REFRESH_INTERVAL_MS = 30000;
-let shortcutRefreshTimer = null;
-
-function refreshShortcuts() {
-  const binds = [
-    [currentLockAccelerator, () => setClickThrough(!locked)],
-    [currentClearChatAccelerator, () => sendToRenderer('clear-chat')],
-    [currentBookmarkAccelerator, () => sendToRenderer('bookmark-requested')],
-    [currentToggleVisibilityAccelerator, toggleOverlayVisibility]
-  ];
-  binds.forEach(([accelerator, handler]) => {
-    if (!accelerator) return;
-    try { globalShortcut.unregister(accelerator); } catch (_) { /* not registered */ }
-    tryRegisterShortcut(accelerator, handler);
-  });
-}
-
-function startShortcutRefresh() {
-  clearInterval(shortcutRefreshTimer);
-  shortcutRefreshTimer = setInterval(refreshShortcuts, SHORTCUT_REFRESH_INTERVAL_MS);
-  const { powerMonitor } = require('electron');
-  powerMonitor.on('resume', refreshShortcuts);
-  powerMonitor.on('unlock-screen', refreshShortcuts);
-  screen.on('display-metrics-changed', refreshShortcuts);
-  screen.on('display-added', refreshShortcuts);
-  screen.on('display-removed', refreshShortcuts);
-}
-
 // Called by the renderer whenever "is any platform live" changes, so this
 // process (which owns the bookmark file) knows when a session starts/ends.
 function noteBookmarkLiveState(anyLive) {
@@ -1042,7 +1008,6 @@ app.whenReady().then(() => {
   if (!applyToggleVisibilityShortcut(store.get('toggleVisibilityShortcut')).ok) {
     applyToggleVisibilityShortcut('F23');
   }
-  startShortcutRefresh();
   // (DevTools' Ctrl+Shift+I is handled per-window in createWindow() – it used
   // to be a *global* shortcut here, which stole that combo from every other
   // app on the machine, including DevTools in Chrome, Edge and Discord.)
@@ -1059,7 +1024,6 @@ app.on('second-instance', () => showAndFocusWindow());
 app.on('before-quit', flushWindowBounds);
 
 app.on('will-quit', () => {
-  clearInterval(shortcutRefreshTimer);
   globalShortcut.unregisterAll();
   kickChat.stop();
 });
