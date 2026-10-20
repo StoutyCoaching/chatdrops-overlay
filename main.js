@@ -979,7 +979,7 @@ function applyClearChatShortcut(accelerator) {
 // append-bookmark to actually write it.
 function applyBookmarkShortcut(accelerator) {
   if (currentBookmarkAccelerator === accelerator) return { ok: true, invalid: false };
-  const result = tryRegisterShortcut(accelerator, () => sendToRenderer('bookmark-requested'));
+  const result = tryRegisterShortcut(accelerator, onBookmarkKey);
   if (!result.ok) return result;
   releaseShortcut(currentBookmarkAccelerator);
   currentBookmarkAccelerator = accelerator;
@@ -1012,6 +1012,42 @@ function applyToggleVisibilityShortcut(accelerator) {
 
 // Called by the renderer whenever "is any platform live" changes, so this
 // process (which owns the bookmark file) knows when a session starts/ends.
+// Start times (ms since epoch) of the live streams, as last reported by the
+// renderer, so a bookmark can be written without waking it.
+let bookmarkLiveStarts = { kick: null, twitch: null };
+
+function formatUptime(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+// Same "Kick 00:12:34 · Twitch 00:09:10" label the renderer builds.
+function mainBookmarkLabel() {
+  const parts = [];
+  if (bookmarkLiveStarts.kick) parts.push(`Kick ${formatUptime(Date.now() - bookmarkLiveStarts.kick)}`);
+  if (bookmarkLiveStarts.twitch) parts.push(`Twitch ${formatUptime(Date.now() - bookmarkLiveStarts.twitch)}`);
+  return parts.length ? parts.join(' · ') : null;
+}
+
+// Bookmark key pressed. When this process already knows the live times, it
+// writes the bookmark itself, so it still works while a game has the overlay
+// window paused, and the window only has to display it. Otherwise it falls
+// back to asking the window to do it, as before.
+function onBookmarkKey() {
+  const label = bookmarkSessionActive ? mainBookmarkLabel() : null;
+  if (!label) {
+    sendToRenderer('bookmark-requested');
+    return;
+  }
+  const res = appendBookmark(label);
+  sendToRenderer('bookmark-saved', { label, ok: !!res.ok, reason: res.reason });
+}
+
 function noteBookmarkLiveState(anyLive) {
   if (anyLive && !bookmarkSessionActive) {
     bookmarkSessionActive = true;
@@ -1237,7 +1273,15 @@ ipcMain.handle('choose-bookmark-folder', async () => {
   return result.filePaths[0];
 });
 
-ipcMain.on('bookmark-live-state', (event, anyLive) => noteBookmarkLiveState(!!anyLive));
+ipcMain.on('bookmark-live-state', (event, state) => {
+  // Older renderer builds sent a bare boolean.
+  const anyLive = state && typeof state === 'object' ? !!state.anyLive : !!state;
+  bookmarkLiveStarts = {
+    kick: state && Number.isFinite(state.kickStart) ? state.kickStart : null,
+    twitch: state && Number.isFinite(state.twitchStart) ? state.twitchStart : null
+  };
+  noteBookmarkLiveState(anyLive);
+});
 
 ipcMain.handle('append-bookmark', (event, label) => appendBookmark(String(label)));
 

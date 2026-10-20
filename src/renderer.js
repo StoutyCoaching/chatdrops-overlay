@@ -2423,15 +2423,29 @@ overlay.onBookmarkRequested(async () => {
   }
 });
 
+// The main process wrote the bookmark itself (see applyBookmarkShortcut); this
+// just shows it.
+overlay.onBookmarkSaved(({ label, ok, reason }) => {
+  addLine('bookmark', `<span class="tag">BOOKMARK</span> <span class="amount">${escapeHtml(label)}</span>`);
+  if (!ok && reason === 'no-folder') {
+    addLine('system', 'Bookmark folder not set — open settings to choose one.');
+  }
+});
+
 // Tells the main process (which owns the bookmark session/file) whenever
 // "is any platform live" changes, so it knows when a session starts/ends.
 // Only sent on an actual change, not every 30s poll.
+// The start times go along too, so the main process can write a bookmark by
+// itself when the key is pressed, without needing this window to be awake.
 let lastNotifiedBookmarkLiveState = null;
 function notifyBookmarkLiveState() {
   const anyLive = liveState.kick.live || liveState.twitch.live;
-  if (anyLive === lastNotifiedBookmarkLiveState) return;
-  lastNotifiedBookmarkLiveState = anyLive;
-  overlay.notifyLiveState(anyLive);
+  const kickStart = liveState.kick.live && liveState.kick.start ? liveState.kick.start.getTime() : null;
+  const twitchStart = liveState.twitch.live && liveState.twitch.start ? liveState.twitch.start.getTime() : null;
+  const key = `${anyLive}|${kickStart}|${twitchStart}`;
+  if (key === lastNotifiedBookmarkLiveState) return;
+  lastNotifiedBookmarkLiveState = key;
+  overlay.notifyLiveState({ anyLive, kickStart, twitchStart });
 }
 
 // Shows a faint outline around the window's true bounds while it has focus,
