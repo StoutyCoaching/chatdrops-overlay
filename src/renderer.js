@@ -1401,13 +1401,13 @@ let baselinedFaucets = new Set();
 // Drop ticker – a static (non-scrolling) line under the stats line showing
 // the faucet's raw drop log (viewer, amount, streamer – no message text).
 // It sits empty/hidden until the first new drop lands, then always shows the
-// most recent drops, oldest-of-the-visible-set on the left, dropping older
-// ones off as needed to keep the line from overflowing the window.
+// most recent drops, newest on the left, running on until the last one is
+// partly cut off by the window edge.
 // ---------------------------------------------------------------------------
 
 let seenDropIds = new Set();
-let recentDrops = []; // newest first; trimmed to whatever fits on screen
-const MAX_RECENT_DROPS = 20; // upper bound before width-based trimming kicks in
+let recentDrops = []; // newest first; trimmed to just past the window edge
+const MAX_RECENT_DROPS = 13; // upper bound before width-based trimming kicks in
 
 function formatDropItemHtml(d) {
   const decimals = Math.max(0, Math.min(8, settings.dropDecimals != null ? settings.dropDecimals : 4));
@@ -1434,12 +1434,21 @@ function renderDropLine() {
     .join('');
   track.innerHTML = build();
 
-  // Drop the oldest entries (now at the end of the array) until the line
-  // fits without overflowing – it's meant to be a static, fully-visible
-  // line, not something that needs to scroll or wrap.
-  while (recentDrops.length > 1 && track.scrollWidth > container.clientWidth) {
-    recentDrops.pop();
+  // Keep as many recent drops as it takes to run off the right-hand edge: the
+  // last entry shown is allowed to be partly cut off by the window. Entries
+  // past that one are dropped from the end of the array (the oldest), but the
+  // entry that crosses the edge is always kept.
+  const edge = () => container.clientWidth - 10; // 10px = the line's left padding
+  while (recentDrops.length > 1) {
+    const last = recentDrops.pop();
     track.innerHTML = build();
+    if (track.scrollWidth <= edge()) {
+      // Without that entry the line no longer reaches the edge, so it's the
+      // one that gets cut off - put it back.
+      recentDrops.push(last);
+      track.innerHTML = build();
+      break;
+    }
   }
 }
 
