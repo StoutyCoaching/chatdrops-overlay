@@ -47,12 +47,20 @@ body {
 /* Faint inset outline while the (otherwise fully transparent) window has
    focus, so its bounds are visible for dragging/resizing. -1px box-shadow
    offset keeps it inside the frame rather than affecting layout size. */
-body.window-focused {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483647;
+  border: 1px solid transparent; /* borders snap to whole device pixels, so all four edges match (box-shadow doesn't at fractional DPI scaling) */
+}
+body.window-focused::after {
+  border-color: rgba(255, 255, 255, 0.45);
 }
 /* Resize mode: same outline, always on (even while locked / unfocused), in blue to match the lock icon. */
-body.resize-mode {
-  box-shadow: inset 0 0 0 1px rgba(77, 163, 255, 0.8);
+body.resize-mode::after {
+  border-color: rgba(77, 163, 255, 0.8);
 }
 
 /* ---------- drag strip ---------- */
@@ -84,6 +92,11 @@ body.resize-mode {
 #drag-strip.muted-mic #drag-actions button,
 #drag-strip.muted-desktop #drag-actions button {
   color: #fff;
+}
+/* Open (unlocked) red padlock is hard to see on the red muted bar: make it white. */
+#drag-strip.muted-mic #btn-lock.lock-open,
+#drag-strip.muted-desktop #btn-lock.lock-open {
+  color: #fff !important;
 }
 #drag-strip.muted-mic #drag-actions button:hover,
 #drag-strip.muted-desktop #drag-actions button:hover {

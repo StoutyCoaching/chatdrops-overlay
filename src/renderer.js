@@ -2016,6 +2016,7 @@ function updateLockIcon(locked) {
   // Drawn as SVG (stroke = currentColor) rather than the emoji so the red /
   // blue tint is guaranteed to apply - colour emoji fonts ignore CSS colour.
   btn.innerHTML = locked ? LOCK_SVG_CLOSED : LOCK_SVG_OPEN;
+  btn.classList.toggle('lock-open', !locked && !resizeModeOn);
   if (resizeModeOn) {
     btn.style.color = '#4da3ff';
     btn.style.opacity = '1';
