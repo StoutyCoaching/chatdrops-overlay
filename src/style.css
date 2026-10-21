@@ -50,7 +50,7 @@ body {
 body::after {
   content: "";
   position: fixed;
-  inset: 0 1px 0 0; /* 1px in from the right so that edge is never clipped by the window */
+  inset: 0 1px 1px 0; /* 1px in from right and bottom so those edges are never clipped by the window at fractional sizes */
   pointer-events: none;
   z-index: 2147483647;
   border: 1px solid transparent; /* borders snap to whole device pixels, so all four edges match (box-shadow doesn't at fractional DPI scaling) */
