@@ -2006,6 +2006,7 @@ let resizeModeOn = false;
 
 function updateLockIcon(locked) {
   lastLocked = locked;
+  document.body.classList.toggle('resize-mode', resizeModeOn);
   const btn = document.getElementById('btn-lock');
   // Closed padlock (🔒) while locked/click-through, open padlock (🔓) while
   // unlocked. Unlocked means the overlay is still catching clicks, which is
@@ -2048,7 +2049,7 @@ overlay.onClickThroughChanged((locked) => {
 
 const RESIZE_KEY_DEFAULTS = {
   moveUp: 'W', moveLeft: 'A', moveDown: 'S', moveRight: 'D',
-  sizeUp: 'Up', sizeLeft: 'Left', sizeDown: 'Down', sizeRight: 'Right'
+  sizeUp: 'Down', sizeLeft: 'Left', sizeDown: 'Up', sizeRight: 'Right'
 };
 const RESIZE_KEY_LABELS = {
   moveUp: 'Up', moveLeft: 'Left', moveDown: 'Down', moveRight: 'Right',

@@ -67,7 +67,7 @@ const store = new Store({
     resizeMode: false,
     resizeKeys: {
       moveUp: 'W', moveLeft: 'A', moveDown: 'S', moveRight: 'D',
-      sizeUp: 'Up', sizeLeft: 'Left', sizeDown: 'Down', sizeRight: 'Right'
+      sizeUp: 'Down', sizeLeft: 'Left', sizeDown: 'Up', sizeRight: 'Right'
     }
   }
 });
@@ -1073,7 +1073,7 @@ function appendBookmark(label) {
 // Keys are held-to-repeat: movement is time-based so it's smooth at any poll rate.
 const RESIZE_DEFAULT_KEYS = {
   moveUp: 'W', moveLeft: 'A', moveDown: 'S', moveRight: 'D',
-  sizeUp: 'Up', sizeLeft: 'Left', sizeDown: 'Down', sizeRight: 'Right'
+  sizeUp: 'Down', sizeLeft: 'Left', sizeDown: 'Up', sizeRight: 'Right'
 };
 const RESIZE_MOVE_SPEED = 450; // px per second
 const RESIZE_SIZE_SPEED = 450; // px per second

@@ -50,6 +50,10 @@ body {
 body.window-focused {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
 }
+/* Resize mode: same outline, always on (even while locked / unfocused), in blue to match the lock icon. */
+body.resize-mode {
+  box-shadow: inset 0 0 0 1px rgba(77, 163, 255, 0.8);
+}
 
 /* ---------- drag strip ---------- */
 
