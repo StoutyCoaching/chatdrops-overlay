@@ -1998,6 +1998,9 @@ function connectObs() {
 function openSettings() { settingsPanel.classList.remove('hidden'); overlay.setSettingsPanelOpen(true); }
 function closeSettings() { settingsPanel.classList.add('hidden'); overlay.setSettingsPanelOpen(false); }
 
+const LOCK_SVG_ATTRS = 'width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"';
+const LOCK_SVG_CLOSED = `<svg ${LOCK_SVG_ATTRS}><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
+const LOCK_SVG_OPEN = `<svg ${LOCK_SVG_ATTRS}><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-1.9"/></svg>`;
 let lastLocked = false;
 let resizeModeOn = false;
 
@@ -2009,7 +2012,9 @@ function updateLockIcon(locked) {
   // easy to forget mid-stream, so it gets a bright red flag at full opacity;
   // locked (safe, click-through) fades back to low opacity out of the way.
   // Resize mode (move/resize keys live) overrides both with a blue, full-opacity icon.
-  btn.innerHTML = locked ? '&#128274;' : '&#128275;';
+  // Drawn as SVG (stroke = currentColor) rather than the emoji so the red /
+  // blue tint is guaranteed to apply - colour emoji fonts ignore CSS colour.
+  btn.innerHTML = locked ? LOCK_SVG_CLOSED : LOCK_SVG_OPEN;
   if (resizeModeOn) {
     btn.style.color = '#4da3ff';
     btn.style.opacity = '1';
