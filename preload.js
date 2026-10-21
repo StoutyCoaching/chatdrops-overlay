@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('overlay', {
   quit: () => ipcRenderer.invoke('quit-app'),
   onOpenSettings: (cb) => ipcRenderer.on('open-settings', cb),
   onClearChat: (cb) => ipcRenderer.on('clear-chat', cb),
+  setSettingsPanelOpen: (open) => ipcRenderer.send('settings-panel-open', !!open),
+  onResizeModeChanged: (cb) => ipcRenderer.on('resize-mode-changed', (_e, on) => cb(on)),
   onClickThroughChanged: (cb) => ipcRenderer.on('clickthrough-changed', (_e, state) => cb(state)),
   onWindowFocusChanged: (cb) => ipcRenderer.on('window-focus-changed', (_e, focused) => cb(focused)),
   onStreamlabsEvent: (cb) => ipcRenderer.on('streamlabs-event', (_e, data) => cb(data)),

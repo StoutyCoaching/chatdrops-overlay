@@ -152,6 +152,8 @@ function populateSettingsForm(s) {
   document.getElementById('chk-rate-xno').checked = !!s.showRateXno;
   document.getElementById('chk-keep-on-top').checked = s.keepOnTop !== false;
   document.getElementById('chk-igpu').checked = s.useIntegratedGpu !== false;
+  document.getElementById('chk-resize-mode').checked = !!s.resizeMode;
+  renderResizeKeyButtons();
   document.getElementById('in-drop-decimals').value = s.dropDecimals != null ? s.dropDecimals : 4;
   document.getElementById('in-xno-decimals').value = s.xnoDecimals != null ? s.xnoDecimals : 2;
   document.getElementById('chk-obs').checked = !!s.obsEnabled;
@@ -1992,19 +1994,36 @@ function connectObs() {
 // Settings panel wiring
 // ---------------------------------------------------------------------------
 
-function openSettings() { settingsPanel.classList.remove('hidden'); }
-function closeSettings() { settingsPanel.classList.add('hidden'); }
+function openSettings() { settingsPanel.classList.remove('hidden'); overlay.setSettingsPanelOpen(true); }
+function closeSettings() { settingsPanel.classList.add('hidden'); overlay.setSettingsPanelOpen(false); }
+
+let lastLocked = false;
+let resizeModeOn = false;
 
 function updateLockIcon(locked) {
+  lastLocked = locked;
   const btn = document.getElementById('btn-lock');
   // Closed padlock (🔒) while locked/click-through, open padlock (🔓) while
   // unlocked. Unlocked means the overlay is still catching clicks, which is
   // easy to forget mid-stream, so it gets a bright red flag at full opacity;
   // locked (safe, click-through) fades back to low opacity out of the way.
+  // Resize mode (move/resize keys live) overrides both with a blue, full-opacity icon.
   btn.innerHTML = locked ? '&#128274;' : '&#128275;';
-  btn.style.color = locked ? '' : '#ff5656';
-  btn.style.opacity = locked ? '0.35' : '1';
+  if (resizeModeOn) {
+    btn.style.color = '#4da3ff';
+    btn.style.opacity = '1';
+    btn.title = 'Resize mode is on';
+  } else {
+    btn.style.color = locked ? '' : '#ff5656';
+    btn.style.opacity = locked ? '0.35' : '1';
+    btn.title = '';
+  }
 }
+
+overlay.onResizeModeChanged((on) => {
+  resizeModeOn = !!on;
+  updateLockIcon(lastLocked);
+});
 
 document.getElementById('btn-settings').addEventListener('click', openSettings);
 document.getElementById('settings-close').addEventListener('click', closeSettings);
@@ -2014,6 +2033,88 @@ document.getElementById('btn-quit').addEventListener('click', () => overlay.quit
 document.getElementById('btn-lock').addEventListener('click', () => overlay.toggleClickThrough());
 overlay.onClickThroughChanged((locked) => {
   updateLockIcon(locked);
+});
+
+// ---------------------------------------------------------------------------
+// Resize mode key binds (single keys, no modifiers; saved straight away)
+// ---------------------------------------------------------------------------
+
+const RESIZE_KEY_DEFAULTS = {
+  moveUp: 'W', moveLeft: 'A', moveDown: 'S', moveRight: 'D',
+  sizeUp: 'Up', sizeLeft: 'Left', sizeDown: 'Down', sizeRight: 'Right'
+};
+const RESIZE_KEY_LABELS = {
+  moveUp: 'Up', moveLeft: 'Left', moveDown: 'Down', moveRight: 'Right',
+  sizeUp: 'Taller', sizeLeft: 'Narrower', sizeDown: 'Shorter', sizeRight: 'Wider'
+};
+let capturingResizeKey = null;
+
+function currentResizeKeys() {
+  return { ...RESIZE_KEY_DEFAULTS, ...(settings.resizeKeys || {}) };
+}
+
+function renderResizeKeyButtons() {
+  const keys = currentResizeKeys();
+  document.querySelectorAll('[data-resize-key]').forEach((btn) => {
+    const action = btn.dataset.resizeKey;
+    btn.classList.toggle('capturing', capturingResizeKey === action);
+    btn.textContent = capturingResizeKey === action
+      ? `${RESIZE_KEY_LABELS[action]}: press a key…`
+      : `${RESIZE_KEY_LABELS[action]}: ${keys[action]}`;
+  });
+}
+
+function setResizeKeysStatus(text, cls) {
+  const el = document.getElementById('resize-keys-status');
+  el.textContent = text;
+  el.className = `status ${cls || ''}`.trim();
+}
+
+document.querySelectorAll('[data-resize-key]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    capturingResizeKey = btn.dataset.resizeKey;
+    setResizeKeysStatus('');
+    renderResizeKeyButtons();
+  });
+  btn.addEventListener('blur', () => {
+    if (capturingResizeKey === btn.dataset.resizeKey) {
+      capturingResizeKey = null;
+      renderResizeKeyButtons();
+    }
+  });
+  btn.addEventListener('keydown', async (e) => {
+    if (capturingResizeKey !== btn.dataset.resizeKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const action = capturingResizeKey;
+    if (e.key === 'Escape') {
+      capturingResizeKey = null;
+      renderResizeKeyButtons();
+      return;
+    }
+    const result = captureKeyToAccelerator(e);
+    if (result.pending) return;
+    if (result.error) { setResizeKeysStatus(result.error, 'err'); return; }
+    if (result.accelerator.includes('+') && result.accelerator !== 'Plus') {
+      setResizeKeysStatus('Use a single key, without Ctrl / Alt / Shift.', 'err');
+      return;
+    }
+    const keys = currentResizeKeys();
+    const clash = Object.keys(keys).find((a) => a !== action && keys[a].toLowerCase() === result.accelerator.toLowerCase());
+    if (clash) {
+      setResizeKeysStatus(`${result.accelerator} is already used for "${RESIZE_KEY_LABELS[clash]}" (${clash.startsWith('move') ? 'move' : 'size'}).`, 'err');
+      return;
+    }
+    keys[action] = result.accelerator;
+    capturingResizeKey = null;
+    try {
+      settings = await overlay.setSettings({ resizeKeys: keys });
+      setResizeKeysStatus('Saved.', 'ok');
+    } catch (err) {
+      setResizeKeysStatus('Could not save that key.', 'err');
+    }
+    renderResizeKeyButtons();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2512,6 +2613,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     showRateXno: document.getElementById('chk-rate-xno').checked,
     keepOnTop: document.getElementById('chk-keep-on-top').checked,
     useIntegratedGpu: document.getElementById('chk-igpu').checked,
+    resizeMode: document.getElementById('chk-resize-mode').checked,
     dropDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-drop-decimals').value) || 0)),
     xnoDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-xno-decimals').value) || 0)),
     obsEnabled: document.getElementById('chk-obs').checked,
@@ -2581,6 +2683,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
 
 (async function init() {
   await loadSettings();
+  resizeModeOn = !!settings.resizeMode;
   updateLockIcon(false);
 
   const isFirstRun = !settings.kickChannel && !settings.streamlabsToken &&

@@ -225,6 +225,20 @@
       <fieldset>
         <legend>Performance &amp; display</legend>
         <label class="check"><input type="checkbox" id="chk-keep-on-top" /> Keep overlay above games (re-raises it every few seconds)</label>
+        <label class="check"><input type="checkbox" id="chk-resize-mode" /> Resize mode - hold keys to move / resize the overlay, even while locked (lock icon turns blue)</label>
+        <div id="resize-keys" class="resize-keys">
+          <span class="resize-keys-title">Move</span>
+          <button type="button" class="rebind-btn" data-resize-key="moveUp" title="Move up">Up: W</button>
+          <button type="button" class="rebind-btn" data-resize-key="moveLeft" title="Move left">Left: A</button>
+          <button type="button" class="rebind-btn" data-resize-key="moveDown" title="Move down">Down: S</button>
+          <button type="button" class="rebind-btn" data-resize-key="moveRight" title="Move right">Right: D</button>
+          <span class="resize-keys-title">Size</span>
+          <button type="button" class="rebind-btn" data-resize-key="sizeUp" title="Taller">Taller: Up</button>
+          <button type="button" class="rebind-btn" data-resize-key="sizeLeft" title="Narrower">Narrower: Left</button>
+          <button type="button" class="rebind-btn" data-resize-key="sizeDown" title="Shorter">Shorter: Down</button>
+          <button type="button" class="rebind-btn" data-resize-key="sizeRight" title="Wider">Wider: Right</button>
+        </div>
+        <p id="resize-keys-status" class="status"></p>
         <label class="check"><input type="checkbox" id="chk-igpu" /> Run overlay on integrated graphics (power saving) - keeps its drawing off your main GPU (Windows; restart required)</label>
       </fieldset>
 

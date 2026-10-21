@@ -613,3 +613,15 @@ button.primary {
   cursor: pointer;
 }
 button.primary:hover { filter: brightness(1.08); }
+
+/* Resize mode key binds: two rows of four compact buttons */
+.resize-keys {
+  display: grid;
+  grid-template-columns: auto repeat(4, 1fr);
+  gap: 4px;
+  align-items: center;
+  margin: 4px 0 0 22px;
+}
+.resize-keys-title { font-size: 12px; color: var(--ink-muted); }
+.resize-keys .rebind-btn { margin-top: 0; padding: 4px 6px; font-size: 12px; text-align: center; white-space: nowrap; }
+.resize-keys.disabled { opacity: 0.5; }

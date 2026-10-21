@@ -62,7 +62,12 @@ const store = new Store({
     bookmarksFolder: null,
     clearChatGraceMs: 3000,
     windowBounds: { x: undefined, y: undefined, width: 480, height: 640 },
-    clickThrough: false
+    clickThrough: false,
+    resizeMode: false,
+    resizeKeys: {
+      moveUp: 'W', moveLeft: 'A', moveDown: 'S', moveRight: 'D',
+      sizeUp: 'Up', sizeLeft: 'Left', sizeDown: 'Down', sizeRight: 'Right'
+    }
   }
 });
 
@@ -1042,6 +1047,87 @@ function appendBookmark(label) {
   }
 }
 
+// ---- Resize mode ----
+// While "resizeMode" is on, four keys nudge the overlay around the screen and
+// four more change its width/height. It works while the overlay is locked
+// (click-through) because it reads the key state straight from Windows
+// (GetAsyncKeyState, same as the bind backup above) rather than needing focus.
+// Keys are held-to-repeat: movement is time-based so it's smooth at any poll rate.
+const RESIZE_DEFAULT_KEYS = {
+  moveUp: 'W', moveLeft: 'A', moveDown: 'S', moveRight: 'D',
+  sizeUp: 'Up', sizeLeft: 'Left', sizeDown: 'Down', sizeRight: 'Right'
+};
+const RESIZE_MOVE_SPEED = 450; // px per second
+const RESIZE_SIZE_SPEED = 450; // px per second
+const RESIZE_MIN_W = 260;
+const RESIZE_MIN_H = 200;
+let resizeEnabled = false;
+let resizeVks = null; // action -> virtual-key code
+let resizeTimer = null;
+let resizeLastTick = 0;
+let resizeRect = null; // float bounds while a key is held
+let settingsPanelOpen = false; // typing in the settings panel must not move the window
+
+function refreshResizeConfig() {
+  resizeEnabled = !!store.get('resizeMode') && !!GetAsyncKeyState;
+  const keys = { ...RESIZE_DEFAULT_KEYS, ...(store.get('resizeKeys') || {}) };
+  resizeVks = {};
+  for (const action of Object.keys(RESIZE_DEFAULT_KEYS)) {
+    const parsed = parseAcceleratorToVk(keys[action]) || parseAcceleratorToVk(RESIZE_DEFAULT_KEYS[action]);
+    resizeVks[action] = parsed.key;
+  }
+  clearInterval(resizeTimer);
+  resizeTimer = null;
+  resizeRect = null;
+  if (resizeEnabled) {
+    resizeLastTick = Date.now();
+    resizeTimer = setInterval(resizeTick, 16);
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('resize-mode-changed', !!store.get('resizeMode'));
+}
+
+function resizeTick() {
+  const now = Date.now();
+  const dt = Math.min(0.1, (now - resizeLastTick) / 1000);
+  resizeLastTick = now;
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) { resizeRect = null; return; }
+  if (settingsPanelOpen && mainWindow.isFocused()) { resizeRect = null; return; }
+  // Ignore keys combined with Ctrl/Alt/Win so normal shortcuts (Ctrl+A, Alt+D…) don't move it.
+  let down;
+  try {
+    if (keyIsDown(0x11) || keyIsDown(0x12) || keyIsDown(0x5B) || keyIsDown(0x5C)) { resizeRect = null; return; }
+    down = {};
+    for (const a of Object.keys(resizeVks)) down[a] = keyIsDown(resizeVks[a]);
+  } catch (_) { return; }
+  const dx = (down.moveRight ? 1 : 0) - (down.moveLeft ? 1 : 0);
+  const dy = (down.moveDown ? 1 : 0) - (down.moveUp ? 1 : 0);
+  const dw = (down.sizeRight ? 1 : 0) - (down.sizeLeft ? 1 : 0);
+  const dh = (down.sizeUp ? 1 : 0) - (down.sizeDown ? 1 : 0);
+  if (!dx && !dy && !dw && !dh) { resizeRect = null; return; }
+
+  const actual = mainWindow.getBounds();
+  // Keep our own fractional position while keys stay held (setBounds rounds);
+  // re-sync if something else moved the window in between.
+  if (!resizeRect || Math.abs(resizeRect.x - actual.x) > 2 || Math.abs(resizeRect.y - actual.y) > 2 ||
+      Math.abs(resizeRect.width - actual.width) > 2 || Math.abs(resizeRect.height - actual.height) > 2) {
+    resizeRect = { ...actual };
+  }
+  const r = resizeRect;
+  const display = screen.getDisplayMatching(actual).workArea;
+  r.width = Math.max(RESIZE_MIN_W, Math.min(display.width, r.width + dw * RESIZE_SIZE_SPEED * dt));
+  r.height = Math.max(RESIZE_MIN_H, Math.min(display.height, r.height + dh * RESIZE_SIZE_SPEED * dt));
+  r.x += dx * RESIZE_MOVE_SPEED * dt;
+  r.y += dy * RESIZE_MOVE_SPEED * dt;
+  // Keep at least part of the window on the display so it can't be lost.
+  const keep = 60;
+  r.x = Math.max(display.x - r.width + keep, Math.min(display.x + display.width - keep, r.x));
+  r.y = Math.max(display.y, Math.min(display.y + display.height - keep, r.y));
+  mainWindow.setBounds({
+    x: Math.round(r.x), y: Math.round(r.y),
+    width: Math.round(r.width), height: Math.round(r.height)
+  });
+}
+
 function setClickThrough(state) {
   locked = state;
   if (mainWindow) {
@@ -1106,6 +1192,7 @@ app.whenReady().then(() => {
     callback({ requestHeaders: headers });
   });
   createWindow();
+  refreshResizeConfig();
   createTray();
   connectStreamlabs();
   startNanodropsPolling();
@@ -1188,6 +1275,7 @@ ipcMain.handle('set-settings', (event, patch) => {
   store.set(patch);
   if (tokenChanged) connectStreamlabs();
   if ('keepOnTop' in patch) applyKeepOnTop(!!patch.keepOnTop);
+  if ('resizeMode' in patch || 'resizeKeys' in patch) refreshResizeConfig();
   if ('useIntegratedGpu' in patch) applyIntegratedGpuPreference(!!patch.useIntegratedGpu);
   if ('nanodropsFaucetId' in patch || 'nanodropsFaucetId2' in patch || 'showNanodrops' in patch) {
     pruneNanodropsState();
@@ -1195,6 +1283,8 @@ ipcMain.handle('set-settings', (event, patch) => {
   }
   return settingsPayload();
 });
+
+ipcMain.on('settings-panel-open', (event, open) => { settingsPanelOpen = !!open; });
 
 ipcMain.handle('reconnect-streamlabs', () => {
   connectStreamlabs();
