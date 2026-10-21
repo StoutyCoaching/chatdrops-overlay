@@ -152,7 +152,6 @@ function populateSettingsForm(s) {
   document.getElementById('chk-rate-xno').checked = !!s.showRateXno;
   document.getElementById('chk-keep-on-top').checked = s.keepOnTop !== false;
   document.getElementById('chk-igpu').checked = s.useIntegratedGpu !== false;
-  document.getElementById('chk-resize-mode').checked = !!s.resizeMode;
   renderResizeKeyButtons();
   document.getElementById('in-drop-decimals').value = s.dropDecimals != null ? s.dropDecimals : 4;
   document.getElementById('in-xno-decimals').value = s.xnoDecimals != null ? s.xnoDecimals : 2;
@@ -174,6 +173,8 @@ function populateSettingsForm(s) {
   document.getElementById('bookmark-shortcut-status').textContent = '';
   document.getElementById('btn-rebind-toggle-visibility').textContent = s.toggleVisibilityShortcut || 'F23';
   document.getElementById('toggle-visibility-shortcut-status').textContent = '';
+  document.getElementById('btn-rebind-resize-mode').textContent = s.resizeModeShortcut || 'F24';
+  document.getElementById('resize-mode-shortcut-status').textContent = '';
   document.getElementById('bookmark-folder-path').textContent = s.bookmarksFolder || 'Not set - bookmarks won\'t be saved until you choose a folder.';
   document.getElementById('in-clear-grace').value =
     (s.clearChatGraceMs != null ? s.clearChatGraceMs : DEFAULT_CLEAR_CHAT_GRACE_MS) / 1000;
@@ -2022,6 +2023,7 @@ function updateLockIcon(locked) {
 
 overlay.onResizeModeChanged((on) => {
   resizeModeOn = !!on;
+  settings.resizeMode = resizeModeOn;
   updateLockIcon(lastLocked);
 });
 
@@ -2484,6 +2486,83 @@ toggleVisibilityRebindBtn.addEventListener('blur', () => {
   if (capturingToggleVisibilityShortcut) stopToggleVisibilityCapture(settings.toggleVisibilityShortcut || 'F23');
 });
 
+// ---------------------------------------------------------------------------
+// Resize mode shortcut rebinding (same capture approach as the others).
+// ---------------------------------------------------------------------------
+
+const resizeModeRebindBtn = document.getElementById('btn-rebind-resize-mode');
+let capturingResizeModeShortcut = false;
+
+function setResizeModeRebindStatus(text, cls) {
+  const el = document.getElementById('resize-mode-shortcut-status');
+  if (el) {
+    el.textContent = text;
+    el.className = `status ${cls || ''}`.trim();
+  }
+}
+
+function startResizeModeCapture() {
+  capturingResizeModeShortcut = true;
+  resizeModeRebindBtn.textContent = 'Press a key…';
+  resizeModeRebindBtn.classList.add('capturing');
+  setResizeModeRebindStatus('');
+}
+
+function stopResizeModeCapture(displayText) {
+  capturingResizeModeShortcut = false;
+  resizeModeRebindBtn.classList.remove('capturing');
+  resizeModeRebindBtn.textContent = displayText;
+}
+
+resizeModeRebindBtn.addEventListener('click', () => {
+  if (!capturingResizeModeShortcut) startResizeModeCapture();
+});
+
+resizeModeRebindBtn.addEventListener('keydown', async (e) => {
+  if (!capturingResizeModeShortcut) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const fallback = settings.resizeModeShortcut || 'F24';
+
+  if (e.key === 'Escape') {
+    stopResizeModeCapture(fallback);
+    return;
+  }
+
+  const result = captureKeyToAccelerator(e);
+  if (result.pending) return;
+  if (result.error) {
+    setResizeModeRebindStatus(result.error, 'err');
+    return;
+  }
+
+  resizeModeRebindBtn.textContent = result.accelerator;
+  let res;
+  try {
+    res = await overlay.setResizeModeShortcut(result.accelerator);
+  } catch (err) {
+    res = { ok: false, invalid: true };
+  }
+  if (res.ok) {
+    settings.resizeModeShortcut = res.accelerator;
+    stopResizeModeCapture(res.accelerator);
+    setResizeModeRebindStatus('Saved.', 'ok');
+  } else {
+    stopResizeModeCapture(res.accelerator || fallback);
+    setResizeModeRebindStatus(
+      res.invalid
+        ? `${result.accelerator} isn't a key combination that can be used as a shortcut.`
+        : `Could not bind ${result.accelerator} – already in use by something else.`,
+      'err'
+    );
+  }
+});
+
+resizeModeRebindBtn.addEventListener('blur', () => {
+  if (capturingResizeModeShortcut) stopResizeModeCapture(settings.resizeModeShortcut || 'F24');
+});
+
 document.getElementById('btn-choose-bookmark-folder').addEventListener('click', async () => {
   const folder = await overlay.chooseBookmarkFolder();
   if (folder) {
@@ -2613,7 +2692,6 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     showRateXno: document.getElementById('chk-rate-xno').checked,
     keepOnTop: document.getElementById('chk-keep-on-top').checked,
     useIntegratedGpu: document.getElementById('chk-igpu').checked,
-    resizeMode: document.getElementById('chk-resize-mode').checked,
     dropDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-drop-decimals').value) || 0)),
     xnoDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-xno-decimals').value) || 0)),
     obsEnabled: document.getElementById('chk-obs').checked,

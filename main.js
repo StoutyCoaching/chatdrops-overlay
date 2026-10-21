@@ -59,6 +59,7 @@ const store = new Store({
     clearChatShortcut: 'F21',
     bookmarkShortcut: 'F22',
     toggleVisibilityShortcut: 'F23',
+    resizeModeShortcut: 'F24',
     bookmarksFolder: null,
     clearChatGraceMs: 3000,
     windowBounds: { x: undefined, y: undefined, width: 480, height: 640 },
@@ -179,6 +180,7 @@ let currentLockAccelerator = null; // whatever's actually registered right now
 let currentClearChatAccelerator = null; // whatever's actually registered right now
 let currentBookmarkAccelerator = null; // whatever's actually registered right now
 let currentToggleVisibilityAccelerator = null; // whatever's actually registered right now
+let currentResizeModeAccelerator = null; // whatever's actually registered right now
 
 // A bookmark "session" spans from the moment any platform goes live to the
 // moment none are - Kick and Twitch share one file rather than getting one
@@ -1015,6 +1017,22 @@ function applyToggleVisibilityShortcut(accelerator) {
   return result;
 }
 
+// Turns resize mode on/off from the keyboard (same effect as the Settings checkbox).
+function toggleResizeMode() {
+  store.set('resizeMode', !store.get('resizeMode'));
+  refreshResizeConfig();
+}
+
+// Same register-then-swap approach, for the resize mode toggle.
+function applyResizeModeShortcut(accelerator) {
+  if (currentResizeModeAccelerator === accelerator) return { ok: true, invalid: false };
+  const result = tryRegisterShortcut(accelerator, toggleResizeMode);
+  if (!result.ok) return result;
+  releaseShortcut(currentResizeModeAccelerator);
+  currentResizeModeAccelerator = accelerator;
+  return result;
+}
+
 // Called by the renderer whenever "is any platform live" changes, so this
 // process (which owns the bookmark file) knows when a session starts/ends.
 function noteBookmarkLiveState(anyLive) {
@@ -1219,6 +1237,9 @@ app.whenReady().then(() => {
   if (!applyToggleVisibilityShortcut(store.get('toggleVisibilityShortcut')).ok) {
     applyToggleVisibilityShortcut('F23');
   }
+  if (!applyResizeModeShortcut(store.get('resizeModeShortcut')).ok) {
+    applyResizeModeShortcut('F24');
+  }
   // (DevTools' Ctrl+Shift+I is handled per-window in createWindow() – it used
   // to be a *global* shortcut here, which stole that combo from every other
   // app on the machine, including DevTools in Chrome, Edge and Discord.)
@@ -1317,6 +1338,12 @@ ipcMain.handle('set-toggle-visibility-shortcut', (event, accelerator) => {
   const { ok, invalid } = applyToggleVisibilityShortcut(accelerator);
   if (ok) store.set('toggleVisibilityShortcut', accelerator);
   return { ok, invalid, accelerator: currentToggleVisibilityAccelerator };
+});
+
+ipcMain.handle('set-resize-mode-shortcut', (event, accelerator) => {
+  const { ok, invalid } = applyResizeModeShortcut(accelerator);
+  if (ok) store.set('resizeModeShortcut', accelerator);
+  return { ok, invalid, accelerator: currentResizeModeAccelerator };
 });
 
 ipcMain.handle('choose-bookmark-folder', async () => {

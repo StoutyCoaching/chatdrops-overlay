@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('overlay', {
   setClearChatShortcut: (accelerator) => ipcRenderer.invoke('set-clear-chat-shortcut', accelerator),
   setBookmarkShortcut: (accelerator) => ipcRenderer.invoke('set-bookmark-shortcut', accelerator),
   setToggleVisibilityShortcut: (accelerator) => ipcRenderer.invoke('set-toggle-visibility-shortcut', accelerator),
+  setResizeModeShortcut: (accelerator) => ipcRenderer.invoke('set-resize-mode-shortcut', accelerator),
   chooseBookmarkFolder: () => ipcRenderer.invoke('choose-bookmark-folder'),
   notifyLiveState: (anyLive) => ipcRenderer.send('bookmark-live-state', anyLive),
   appendBookmark: (label) => ipcRenderer.invoke('append-bookmark', label),

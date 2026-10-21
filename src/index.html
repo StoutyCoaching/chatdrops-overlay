@@ -225,7 +225,7 @@
       <fieldset>
         <legend>Performance &amp; display</legend>
         <label class="check"><input type="checkbox" id="chk-keep-on-top" /> Keep overlay above games (re-raises it every few seconds)</label>
-        <label class="check"><input type="checkbox" id="chk-resize-mode" /> Resize mode - hold keys to move / resize the overlay, even while locked (lock icon turns blue)</label>
+        <p class="status">Resize mode keys - toggle the mode with its shortcut (Shortcuts, below); while on, hold these to move / resize the overlay, even when locked (lock icon turns blue).</p>
         <div id="resize-keys" class="resize-keys">
           <span class="resize-keys-title">Move</span>
           <button type="button" class="rebind-btn" data-resize-key="moveUp" title="Move up">Up: W</button>
@@ -260,6 +260,10 @@
           <button type="button" id="btn-rebind-toggle-visibility" class="rebind-btn">F23</button>
         </label>
         <p id="toggle-visibility-shortcut-status" class="status"></p>
+        <label>Resize mode on / off
+          <button type="button" id="btn-rebind-resize-mode" class="rebind-btn">F24</button>
+        </label>
+        <p id="resize-mode-shortcut-status" class="status"></p>
         <label>New-message grace period (seconds)
           <input id="in-clear-grace" type="number" min="0" max="30" step="0.5" />
         </label>
