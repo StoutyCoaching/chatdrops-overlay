@@ -1075,8 +1075,14 @@ const RESIZE_DEFAULT_KEYS = {
   moveUp: 'W', moveLeft: 'A', moveDown: 'S', moveRight: 'D',
   sizeUp: 'Down', sizeLeft: 'Left', sizeDown: 'Up', sizeRight: 'Right'
 };
-const RESIZE_MOVE_SPEED = 450; // px per second
-const RESIZE_SIZE_SPEED = 450; // px per second
+// Speed ramps up the longer a key is held: a quick tap/short hold gives fine
+// control (slow), holding on for ~1s reaches the full speed for big moves.
+const RESIZE_MOVE_SPEED_MIN = 40;  // px per second at the start of a hold
+const RESIZE_MOVE_SPEED_MAX = 320; // px per second after RESIZE_RAMP_SECONDS
+const RESIZE_SIZE_SPEED_MIN = 40;
+const RESIZE_SIZE_SPEED_MAX = 320;
+const RESIZE_RAMP_SECONDS = 1.2;
+let resizeHeldSince = 0; // when the current continuous hold started
 const RESIZE_MIN_W = 260;
 const RESIZE_MIN_H = 200;
 let resizeEnabled = false;
@@ -1108,12 +1114,12 @@ function resizeTick() {
   const now = Date.now();
   const dt = Math.min(0.1, (now - resizeLastTick) / 1000);
   resizeLastTick = now;
-  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) { resizeRect = null; return; }
-  if (settingsPanelOpen && mainWindow.isFocused()) { resizeRect = null; return; }
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) { resizeRect = null; resizeHeldSince = 0; return; }
+  if (settingsPanelOpen && mainWindow.isFocused()) { resizeRect = null; resizeHeldSince = 0; return; }
   // Ignore keys combined with Ctrl/Alt/Win so normal shortcuts (Ctrl+A, Alt+D…) don't move it.
   let down;
   try {
-    if (keyIsDown(0x11) || keyIsDown(0x12) || keyIsDown(0x5B) || keyIsDown(0x5C)) { resizeRect = null; return; }
+    if (keyIsDown(0x11) || keyIsDown(0x12) || keyIsDown(0x5B) || keyIsDown(0x5C)) { resizeRect = null; resizeHeldSince = 0; return; }
     down = {};
     for (const a of Object.keys(resizeVks)) down[a] = keyIsDown(resizeVks[a]);
   } catch (_) { return; }
@@ -1121,7 +1127,12 @@ function resizeTick() {
   const dy = (down.moveDown ? 1 : 0) - (down.moveUp ? 1 : 0);
   const dw = (down.sizeRight ? 1 : 0) - (down.sizeLeft ? 1 : 0);
   const dh = (down.sizeUp ? 1 : 0) - (down.sizeDown ? 1 : 0);
-  if (!dx && !dy && !dw && !dh) { resizeRect = null; return; }
+  if (!dx && !dy && !dw && !dh) { resizeRect = null; resizeHeldSince = 0; return; }
+  if (!resizeHeldSince) resizeHeldSince = now;
+  const t = Math.min(1, (now - resizeHeldSince) / 1000 / RESIZE_RAMP_SECONDS);
+  const ease = t * t; // slow start, then speeds up
+  const RESIZE_MOVE_SPEED = RESIZE_MOVE_SPEED_MIN + (RESIZE_MOVE_SPEED_MAX - RESIZE_MOVE_SPEED_MIN) * ease;
+  const RESIZE_SIZE_SPEED = RESIZE_SIZE_SPEED_MIN + (RESIZE_SIZE_SPEED_MAX - RESIZE_SIZE_SPEED_MIN) * ease;
 
   const actual = mainWindow.getBounds();
   // Keep our own fractional position while keys stay held (setBounds rounds);
