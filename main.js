@@ -1153,10 +1153,17 @@ function resizeTick() {
   r.x = Math.max(display.x - r.width + keep, Math.min(display.x + display.width - keep, r.x));
   r.y = Math.max(display.y, Math.min(display.y + display.height - keep, r.y));
   if (!dw && !dh) {
-    // Move only: setPosition leaves the size alone. setBounds would re-apply the
-    // size too, and on scaled (125%/150%) Windows displays the DIP->pixel rounding
-    // can make the window grow/shrink by a pixel or so as it moves.
-    mainWindow.setPosition(Math.round(r.x), Math.round(r.y));
+    // Move only: keep the exact size we locked when the hold began, and verify it
+    // after each step. On scaled (125%/150%) Windows displays the DIP->pixel
+    // rounding can otherwise make the window grow/shrink by a pixel as it moves.
+    const lw = Math.round(r.width), lh = Math.round(r.height);
+    const mx = Math.round(r.x), my = Math.round(r.y);
+    mainWindow.setBounds({ x: mx, y: my, width: lw, height: lh });
+    // If Windows still changed the size, correct it straight away by the difference.
+    const nb = mainWindow.getBounds();
+    if (nb.width !== lw || nb.height !== lh) {
+      mainWindow.setBounds({ x: mx, y: my, width: lw + (lw - nb.width), height: lh + (lh - nb.height) });
+    }
     return;
   }
   mainWindow.setBounds({

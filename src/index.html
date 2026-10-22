@@ -238,6 +238,9 @@
           <button type="button" id="btn-rebind-clear-chat" class="rebind-btn">F21</button>
         </label>
         <p id="clear-chat-shortcut-status" class="status"></p>
+        <label>New-message grace period (seconds)
+          <input id="in-clear-grace" type="number" min="0" max="30" step="0.5" />
+        </label>
         <label>Bookmark stream timestamp
           <button type="button" id="btn-rebind-bookmark" class="rebind-btn">F22</button>
         </label>
@@ -263,14 +266,11 @@
           <button type="button" class="rebind-btn" data-resize-key="sizeRight" title="Wider">Wider: Right</button>
         </div>
         <p id="resize-keys-status" class="status"></p>
-        <label>Move/resize start speed: <span id="val-resize-speed-min"></span> px/s
+        <label>Start speed: <span id="val-resize-speed-min"></span> px/s
           <input id="in-resize-speed-min" type="range" min="5" max="300" step="5" />
         </label>
-        <label>Move/resize max speed: <span id="val-resize-speed-max"></span> px/s
+        <label>Max speed: <span id="val-resize-speed-max"></span> px/s
           <input id="in-resize-speed-max" type="range" min="50" max="1000" step="10" />
-        </label>
-        <label>New-message grace period (seconds)
-          <input id="in-clear-grace" type="number" min="0" max="30" step="0.5" />
         </label>
       </fieldset>
 
