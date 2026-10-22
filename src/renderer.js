@@ -176,6 +176,9 @@ function populateSettingsForm(s) {
   document.getElementById('btn-rebind-resize-mode').textContent = s.resizeModeShortcut || 'F24';
   document.getElementById('resize-mode-shortcut-status').textContent = '';
   document.getElementById('bookmark-folder-path').textContent = s.bookmarksFolder || 'Not set - bookmarks won\'t be saved until you choose a folder.';
+  document.getElementById('in-resize-speed-min').value = s.resizeSpeedMin != null ? s.resizeSpeedMin : 40;
+  document.getElementById('in-resize-speed-max').value = s.resizeSpeedMax != null ? s.resizeSpeedMax : 320;
+  updateResizeSpeedLabels();
   document.getElementById('in-clear-grace').value =
     (s.clearChatGraceMs != null ? s.clearChatGraceMs : DEFAULT_CLEAR_CHAT_GRACE_MS) / 1000;
 }
@@ -2650,6 +2653,13 @@ document.getElementById('in-font-size').addEventListener('input', (e) => {
 document.getElementById('in-bg-opacity').addEventListener('input', (e) => {
   document.documentElement.style.setProperty('--bg-opacity', e.target.value);
 });
+function updateResizeSpeedLabels() {
+  document.getElementById('val-resize-speed-min').textContent = document.getElementById('in-resize-speed-min').value;
+  document.getElementById('val-resize-speed-max').textContent = document.getElementById('in-resize-speed-max').value;
+}
+['in-resize-speed-min', 'in-resize-speed-max'].forEach((id) =>
+  document.getElementById(id).addEventListener('input', updateResizeSpeedLabels));
+
 document.getElementById('in-drag-bar-opacity').addEventListener('input', (e) => {
   document.documentElement.style.setProperty('--drag-bar-opacity', e.target.value);
 });
@@ -2711,6 +2721,8 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     fontSize: Number(document.getElementById('in-font-size').value),
     bgOpacity: Number(document.getElementById('in-bg-opacity').value),
     dragBarOpacity: Number(document.getElementById('in-drag-bar-opacity').value),
+    resizeSpeedMin: Number(document.getElementById('in-resize-speed-min').value) || 40,
+    resizeSpeedMax: Math.max(Number(document.getElementById('in-resize-speed-min').value) || 40, Number(document.getElementById('in-resize-speed-max').value) || 320),
     clearChatGraceMs: Math.max(0, Math.round((Number(document.getElementById('in-clear-grace').value) || 0) * 1000))
   };
 

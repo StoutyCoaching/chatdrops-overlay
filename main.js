@@ -65,6 +65,8 @@ const store = new Store({
     windowBounds: { x: undefined, y: undefined, width: 480, height: 640 },
     clickThrough: false,
     resizeMode: false,
+    resizeSpeedMin: 40,  // px/s at the start of a key hold
+    resizeSpeedMax: 320, // px/s after holding for a moment
     resizeKeys: {
       moveUp: 'W', moveLeft: 'A', moveDown: 'S', moveRight: 'D',
       sizeUp: 'Down', sizeLeft: 'Left', sizeDown: 'Up', sizeRight: 'Right'
@@ -1077,10 +1079,7 @@ const RESIZE_DEFAULT_KEYS = {
 };
 // Speed ramps up the longer a key is held: a quick tap/short hold gives fine
 // control (slow), holding on for ~1s reaches the full speed for big moves.
-const RESIZE_MOVE_SPEED_MIN = 40;  // px per second at the start of a hold
-const RESIZE_MOVE_SPEED_MAX = 320; // px per second after RESIZE_RAMP_SECONDS
-const RESIZE_SIZE_SPEED_MIN = 40;
-const RESIZE_SIZE_SPEED_MAX = 320;
+// Min/max are user settings (resizeSpeedMin / resizeSpeedMax) read each tick.
 const RESIZE_RAMP_SECONDS = 1.2;
 let resizeHeldSince = 0; // when the current continuous hold started
 const RESIZE_MIN_W = 260;
@@ -1131,8 +1130,10 @@ function resizeTick() {
   if (!resizeHeldSince) resizeHeldSince = now;
   const t = Math.min(1, (now - resizeHeldSince) / 1000 / RESIZE_RAMP_SECONDS);
   const ease = t * t; // slow start, then speeds up
-  const RESIZE_MOVE_SPEED = RESIZE_MOVE_SPEED_MIN + (RESIZE_MOVE_SPEED_MAX - RESIZE_MOVE_SPEED_MIN) * ease;
-  const RESIZE_SIZE_SPEED = RESIZE_SIZE_SPEED_MIN + (RESIZE_SIZE_SPEED_MAX - RESIZE_SIZE_SPEED_MIN) * ease;
+  const sMin = Math.max(1, Number(store.get('resizeSpeedMin')) || 40);
+  const sMax = Math.max(sMin, Number(store.get('resizeSpeedMax')) || 320);
+  const RESIZE_MOVE_SPEED = sMin + (sMax - sMin) * ease;
+  const RESIZE_SIZE_SPEED = RESIZE_MOVE_SPEED;
 
   const actual = mainWindow.getBounds();
   // Keep our own fractional position while keys stay held (setBounds rounds);
