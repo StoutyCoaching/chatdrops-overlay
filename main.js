@@ -1152,6 +1152,13 @@ function resizeTick() {
   const keep = 60;
   r.x = Math.max(display.x - r.width + keep, Math.min(display.x + display.width - keep, r.x));
   r.y = Math.max(display.y, Math.min(display.y + display.height - keep, r.y));
+  if (!dw && !dh) {
+    // Move only: setPosition leaves the size alone. setBounds would re-apply the
+    // size too, and on scaled (125%/150%) Windows displays the DIP->pixel rounding
+    // can make the window grow/shrink by a pixel or so as it moves.
+    mainWindow.setPosition(Math.round(r.x), Math.round(r.y));
+    return;
+  }
   mainWindow.setBounds({
     x: Math.round(r.x), y: Math.round(r.y),
     width: Math.round(r.width), height: Math.round(r.height)
