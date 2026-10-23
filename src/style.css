@@ -206,6 +206,19 @@ body.resize-mode::after {
   color: var(--ink);
 }
 
+/* Locked (click-through): the drag bar buttons can't be clicked, so don't
+   highlight them on hover. Keeps each button's normal (non-hover) look,
+   including the muted-bar white text and the lock icon's inline colour. */
+body.locked #drag-actions button:hover {
+  background: transparent;
+  color: var(--ink-muted);
+}
+body.locked #drag-strip.muted-mic #drag-actions button:hover,
+body.locked #drag-strip.muted-desktop #drag-actions button:hover {
+  background: transparent;
+  color: #fff;
+}
+
 /* ---------- stats bar ---------- */
 
 #stats-bar {

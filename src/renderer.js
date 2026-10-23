@@ -2009,6 +2009,7 @@ let resizeModeOn = false;
 
 function updateLockIcon(locked) {
   lastLocked = locked;
+  document.body.classList.toggle('locked', !!locked);
   document.body.classList.toggle('resize-mode', resizeModeOn);
   const btn = document.getElementById('btn-lock');
   // Closed padlock (🔒) while locked/click-through, open padlock (🔓) while
