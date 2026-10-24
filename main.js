@@ -730,8 +730,37 @@ function scheduleWindowBoundsSave() {
 let keepOnTopTimer = null;
 const KEEP_ON_TOP_INTERVAL_MS = 3000;
 
+// Is any other visible window stacked above the overlay? Walks up the Z-order
+// (GW_HWNDPREV) from the overlay; cheap, and doesn't touch the stacking itself.
+function somethingVisibleAboveOverlay() {
+  const buf = mainWindow.getNativeWindowHandle();
+  const hwnd = Number(buf.length >= 8 ? buf.readBigUInt64LE(0) : buf.readUInt32LE(0));
+  let w = winGetWindow(hwnd, 3 /* GW_HWNDPREV */);
+  for (let i = 0; w && i < 200; i++) {
+    if (winIsWindowVisible(w)) return true;
+    w = winGetWindow(w, 3);
+  }
+  return false;
+}
+
+// The old version dropped and re-applied always-on-top every 3 seconds. Each
+// of those is two Z-order changes the desktop compositor has to process, which
+// can knock a borderless game out of its low-latency presentation path and show
+// up as a small hitch every few seconds. Now the overlay is only restacked when
+// something visible has actually ended up above it, and then with a single
+// SetWindowPos call (topmost, no move/resize/activate).
 function assertOnTop() {
   if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
+  if (winGetWindow && winIsWindowVisible && winSetWindowPos) {
+    try {
+      if (!somethingVisibleAboveOverlay()) return;
+      const buf = mainWindow.getNativeWindowHandle();
+      const hwnd = Number(buf.length >= 8 ? buf.readBigUInt64LE(0) : buf.readUInt32LE(0));
+      // HWND_TOPMOST = -1; SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE = 0x13
+      winSetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x13);
+      return;
+    } catch (_) { /* fall through to the old method */ }
+  }
   mainWindow.setAlwaysOnTop(false);
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
 }
@@ -824,10 +853,21 @@ function createWindow() {
 // that are bound. Both paths share one de-dupe, so a press that reaches both
 // only fires once. If the call can't be set up, the binds behave as before.
 let GetAsyncKeyState = null;
+let winGetWindow = null;
+let winIsWindowVisible = null;
+let winSetWindowPos = null;
 if (process.platform === 'win32') {
   try {
     const koffi = require('koffi');
-    GetAsyncKeyState = koffi.load('user32.dll').func('int16_t __stdcall GetAsyncKeyState(int vKey)');
+    const user32 = koffi.load('user32.dll');
+    GetAsyncKeyState = user32.func('int16_t __stdcall GetAsyncKeyState(int vKey)');
+    try {
+      winGetWindow = user32.func('intptr_t __stdcall GetWindow(intptr_t hWnd, uint32_t uCmd)');
+      winIsWindowVisible = user32.func('int __stdcall IsWindowVisible(intptr_t hWnd)');
+      winSetWindowPos = user32.func('int __stdcall SetWindowPos(intptr_t hWnd, intptr_t hWndInsertAfter, int X, int Y, int cx, int cy, uint32_t uFlags)');
+    } catch (_) {
+      winGetWindow = winIsWindowVisible = winSetWindowPos = null; // falls back to the old restack
+    }
   } catch (err) {
     console.warn('[shortcut] key-state backup unavailable, using RegisterHotKey only:', err && err.message);
   }
@@ -1175,8 +1215,12 @@ function resizeTick() {
 function setClickThrough(state) {
   locked = state;
   if (mainWindow) {
-    // forward: true still delivers mousemove so we could show/hide chrome later if desired
-    mainWindow.setIgnoreMouseEvents(state, { forward: true });
+    // No { forward: true } here: on Windows that makes Electron install a
+    // system-wide low-level mouse hook, so every mouse movement in the game is
+    // routed through this process first. With a high-polling-rate mouse that
+    // can cause stutter whenever this process is busy or starved of CPU. The
+    // overlay doesn't use forwarded mouse-moves for anything.
+    mainWindow.setIgnoreMouseEvents(state);
   }
   if (tray) buildTrayMenu();
   if (mainWindow) mainWindow.webContents.send('clickthrough-changed', state);

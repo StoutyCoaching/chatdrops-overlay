@@ -50,7 +50,7 @@ function renderChatContent(content) {
   while ((match = EMOTE_RE.exec(text)) !== null) {
     out += escapeHtml(text.slice(lastIndex, match.index));
     const [, id, name] = match;
-    out += `<img class="kick-emote" src="https://files.kick.com/emotes/${escapeHtml(id)}/fullsize" alt=":${escapeHtml(name)}:" title="${escapeHtml(name)}" loading="lazy" />`;
+    out += `<img class="kick-emote" src="https://files.kick.com/emotes/${escapeHtml(id)}/fullsize" alt=":${escapeHtml(name)}:" title="${escapeHtml(name)}" loading="lazy" decoding="async" />`;
     lastIndex = match.index + match[0].length;
   }
   out += escapeHtml(text.slice(lastIndex));
@@ -60,8 +60,23 @@ function renderChatContent(content) {
 // `meta` (chat lines only) records who/what a line came from – platform,
 // message id, user id and name(s) – so it can be taken back out of the feed if
 // the message is later deleted or its author is banned/timed out.
+// Reading scrollHeight and then writing scrollTop for every single line forced
+// the browser to re-lay-out the whole feed once per message, which adds up in a
+// busy chat (and on a 480 Hz screen it all competes with the game). Now the
+// "was the feed at the bottom?" check happens once per burst of lines, and the
+// scroll itself happens once, just before the next frame.
+let feedScrollPending = false;
+let feedWasNearBottom = true;
+
 function addLine(type, html, meta) {
-  const wasNearBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 60;
+  if (!feedScrollPending) {
+    feedWasNearBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 60;
+    feedScrollPending = true;
+    requestAnimationFrame(() => {
+      feedScrollPending = false;
+      if (feedWasNearBottom) feedEl.scrollTop = feedEl.scrollHeight;
+    });
+  }
 
   const div = document.createElement('div');
   div.className = `line ${type}`;
@@ -79,8 +94,6 @@ function addLine(type, html, meta) {
   while (feedEl.children.length > MAX_LINES) {
     feedEl.removeChild(feedEl.firstChild);
   }
-
-  if (wasNearBottom) feedEl.scrollTop = feedEl.scrollHeight;
 }
 
 // Takes chat lines back out of the feed after a moderation action on that
@@ -589,7 +602,7 @@ function renderTwitchChatContent(message, emotesTag) {
     if (from < lastIndex) return; // overlapping data guard
     out += escapeHtml(text.slice(lastIndex, from));
     const name = text.slice(from, to);
-    out += `<img class="twitch-emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/default/dark/2.0" alt=":${escapeHtml(name)}:" title="${escapeHtml(name)}" loading="lazy" />`;
+    out += `<img class="twitch-emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/default/dark/2.0" alt=":${escapeHtml(name)}:" title="${escapeHtml(name)}" loading="lazy" decoding="async" />`;
     lastIndex = to;
   });
   out += escapeHtml(text.slice(lastIndex));
