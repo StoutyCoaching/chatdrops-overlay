@@ -3,7 +3,7 @@
 const feedEl = document.getElementById('feed');
 const settingsPanel = document.getElementById('settings-panel');
 const dragStripEl = document.getElementById('drag-strip');
-const MAX_LINES = 300;
+const MAX_LINES = 34;
 
 let settings = {};
 
@@ -57,6 +57,29 @@ function renderChatContent(content) {
   return out;
 }
 
+// With "Animate emotes" off, each emote image is swapped for a canvas holding
+// its first frame, so GIF/animated-WebP emotes stay still.
+function freezeEmote(img) {
+  const swap = () => {
+    if (!img.parentNode || !img.naturalWidth) return;
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    c.className = img.className;
+    c.title = img.title;
+    c.setAttribute('role', 'img');
+    c.setAttribute('aria-label', img.alt);
+    try { c.getContext('2d').drawImage(img, 0, 0); } catch (_) { return; }
+    img.replaceWith(c);
+  };
+  if (img.complete && img.naturalWidth) swap();
+  else img.addEventListener('load', swap, { once: true });
+}
+
+function freezeEmotesIn(root) {
+  root.querySelectorAll('img.kick-emote, img.twitch-emote').forEach(freezeEmote);
+}
+
 // `meta` (chat lines only) records who/what a line came from – platform,
 // message id, user id and name(s) – so it can be taken back out of the feed if
 // the message is later deleted or its author is banned/timed out.
@@ -89,6 +112,7 @@ function addLine(type, html, meta) {
     if (names.length) div.dataset.names = names.join('|');
   }
   div.innerHTML = html;
+  if (settings && settings.animateEmotes === false) freezeEmotesIn(div);
   feedEl.appendChild(div);
 
   while (feedEl.children.length > MAX_LINES) {
@@ -146,6 +170,7 @@ function populateSettingsForm(s) {
   document.getElementById('chk-kick-platform-color').checked = !!s.kickForcePlatformColor;
   document.getElementById('chk-twitch-platform-color').checked = !!s.twitchForcePlatformColor;
   document.getElementById('in-max-badges').value = s.maxBadges != null ? s.maxBadges : 3;
+  document.getElementById('chk-animate-emotes').checked = s.animateEmotes !== false;
   document.getElementById('in-streamlabs-token').value = s.streamlabsToken || '';
   document.getElementById('chk-chat').checked = !!s.showChat;
   document.getElementById('chk-follows').checked = !!s.showFollows;
@@ -2704,6 +2729,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     kickForcePlatformColor: document.getElementById('chk-kick-platform-color').checked,
     twitchForcePlatformColor: document.getElementById('chk-twitch-platform-color').checked,
     maxBadges: Math.max(0, Math.min(10, Number(document.getElementById('in-max-badges').value) || 0)),
+    animateEmotes: document.getElementById('chk-animate-emotes').checked,
     streamlabsToken: document.getElementById('in-streamlabs-token').value.trim(),
     showChat: document.getElementById('chk-chat').checked,
     showFollows: document.getElementById('chk-follows').checked,
@@ -2757,6 +2783,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
 
   settings = await overlay.setSettings(patch);
   applyAppearance(settings);
+  if (settings.animateEmotes === false) freezeEmotesIn(feedEl);
   // Re-place faucet chips immediately using the new setting/current live
   // status, rather than waiting for the next poll to catch up.
   refreshFaucetBarPlacement();
