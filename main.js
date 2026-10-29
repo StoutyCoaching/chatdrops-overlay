@@ -92,8 +92,6 @@ const customBadges = listCustomBadges();
 
 // Setting from the removed low-impact (CPU rendering) mode; nothing reads it now.
 store.delete('lowImpactMode');
-// Setting from the removed "Animate emotes" option; emotes always animate now.
-store.delete('animateEmotes');
 
 // ---- Integrated graphics (Windows "Power saving" GPU preference) ----
 // Windows lets each app be pinned to the power-saving GPU (on a desktop CPU
