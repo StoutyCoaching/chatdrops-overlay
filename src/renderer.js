@@ -99,7 +99,27 @@ let feedWasNearBottom = true;
 const EMOTE_HOLD_MS = 600;
 let pendingLines = []; // [{ div, ready }] in arrival order
 
-function insertLine(div) {
+// Lines that are ready to show are collected here and written to the feed in
+// one go, at most once per "chat update interval". On a transparent overlay
+// every change to the feed is another frame the desktop has to present, so a
+// burst of chat now costs one repaint instead of one per message. The first
+// line after a quiet spell still appears immediately; only lines arriving
+// within the interval of the last update wait for the next one. 0 = instant.
+let batchedLines = [];
+let batchTimer = null;
+let lastBatchFlush = 0;
+
+function chatBatchMs() {
+  const v = settings ? Number(settings.chatBatchMs) : NaN;
+  return Number.isFinite(v) ? Math.max(0, Math.min(1000, v)) : 150;
+}
+
+function flushBatch() {
+  lastBatchFlush = Date.now();
+  if (!batchedLines.length) return;
+  const lines = batchedLines;
+  batchedLines = [];
+
   if (!feedScrollPending) {
     feedWasNearBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 60;
     feedScrollPending = true;
@@ -108,12 +128,32 @@ function insertLine(div) {
       if (feedWasNearBottom) feedEl.scrollTop = feedEl.scrollHeight;
     });
   }
-  if (settings && settings.animateEmotes === false) freezeEmotesIn(div);
-  feedEl.appendChild(div);
+
+  const frag = document.createDocumentFragment();
+  const freeze = settings && settings.animateEmotes === false;
+  for (const div of lines) {
+    if (freeze) freezeEmotesIn(div);
+    frag.appendChild(div);
+  }
+  feedEl.appendChild(frag);
 
   while (feedEl.children.length > MAX_LINES) {
     feedEl.removeChild(feedEl.firstChild);
   }
+}
+
+function insertLine(div) {
+  batchedLines.push(div);
+  if (batchTimer !== null) return; // a flush is already scheduled
+  const wait = Math.max(0, chatBatchMs() - (Date.now() - lastBatchFlush));
+  if (wait === 0) {
+    flushBatch();
+    return;
+  }
+  batchTimer = setTimeout(() => {
+    batchTimer = null;
+    flushBatch();
+  }, wait);
 }
 
 function flushPendingLines() {
@@ -186,6 +226,7 @@ function removeChatLines(plat, { msgId, userId, names } = {}) {
   // A line still waiting for its emotes hasn't reached the feed yet.
   const before = pendingLines.length;
   pendingLines = pendingLines.filter((p) => !matches(p.div));
+  batchedLines = batchedLines.filter((d) => !matches(d));
   if (pendingLines.length !== before) flushPendingLines();
 }
 
@@ -202,6 +243,7 @@ function clearFeed() {
     if (ts < cutoff) feedEl.removeChild(el);
   });
   pendingLines = pendingLines.filter((p) => Number(p.div.dataset.ts || 0) >= cutoff);
+  batchedLines = batchedLines.filter((d) => Number(d.dataset.ts || 0) >= cutoff);
   flushPendingLines();
 }
 
@@ -226,6 +268,7 @@ function populateSettingsForm(s) {
   document.getElementById('in-max-badges').value = s.maxBadges != null ? s.maxBadges : 3;
   document.getElementById('chk-animate-emotes').checked = s.animateEmotes !== false;
   document.getElementById('chk-rise-animation').checked = s.riseAnimation === true;
+  document.getElementById('in-chat-batch-ms').value = s.chatBatchMs != null ? s.chatBatchMs : 150;
   document.getElementById('in-streamlabs-token').value = s.streamlabsToken || '';
   document.getElementById('chk-chat').checked = !!s.showChat;
   document.getElementById('chk-follows').checked = !!s.showFollows;
@@ -2786,6 +2829,11 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     maxBadges: Math.max(0, Math.min(10, Number(document.getElementById('in-max-badges').value) || 0)),
     animateEmotes: document.getElementById('chk-animate-emotes').checked,
     riseAnimation: document.getElementById('chk-rise-animation').checked,
+    chatBatchMs: (() => {
+      const raw = document.getElementById('in-chat-batch-ms').value.trim();
+      const n = Number(raw);
+      return raw !== '' && Number.isFinite(n) ? Math.max(0, Math.min(1000, Math.round(n))) : 150;
+    })(),
     streamlabsToken: document.getElementById('in-streamlabs-token').value.trim(),
     showChat: document.getElementById('chk-chat').checked,
     showFollows: document.getElementById('chk-follows').checked,

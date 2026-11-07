@@ -27,6 +27,7 @@ const store = new Store({
     maxBadges: 3,
     animateEmotes: true,
     riseAnimation: false,
+    chatBatchMs: 150,
     fontSize: 16,
     bgOpacity: 0.45,
     dragBarOpacity: 0.35,
