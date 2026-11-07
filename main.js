@@ -26,6 +26,7 @@ const store = new Store({
     twitchForcePlatformColor: false,
     maxBadges: 3,
     animateEmotes: true,
+    riseAnimation: false,
     fontSize: 16,
     bgOpacity: 0.45,
     dragBarOpacity: 0.35,

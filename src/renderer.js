@@ -50,7 +50,7 @@ function renderChatContent(content) {
   while ((match = EMOTE_RE.exec(text)) !== null) {
     out += escapeHtml(text.slice(lastIndex, match.index));
     const [, id, name] = match;
-    out += `<img class="kick-emote" src="https://files.kick.com/emotes/${escapeHtml(id)}/fullsize" alt=":${escapeHtml(name)}:" title="${escapeHtml(name)}" loading="lazy" decoding="async" />`;
+    out += `<img class="kick-emote" src="https://files.kick.com/emotes/${escapeHtml(id)}/fullsize" alt=":${escapeHtml(name)}:" title="${escapeHtml(name)}" decoding="async" />`;
     lastIndex = match.index + match[0].length;
   }
   out += escapeHtml(text.slice(lastIndex));
@@ -91,7 +91,15 @@ function freezeEmotesIn(root) {
 let feedScrollPending = false;
 let feedWasNearBottom = true;
 
-function addLine(type, html, meta) {
+// A line whose emotes haven't loaded yet is held back, off-screen, until they
+// have (or EMOTE_HOLD_MS passes), so it appears once at its final size instead
+// of popping in, reflowing when each emote lands, and decoding while visible.
+// Lines still go into the feed in the order they arrived, so one slow emote
+// delays the lines behind it rather than letting them jump the queue.
+const EMOTE_HOLD_MS = 600;
+let pendingLines = []; // [{ div, ready }] in arrival order
+
+function insertLine(div) {
   if (!feedScrollPending) {
     feedWasNearBottom = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight < 60;
     feedScrollPending = true;
@@ -100,7 +108,24 @@ function addLine(type, html, meta) {
       if (feedWasNearBottom) feedEl.scrollTop = feedEl.scrollHeight;
     });
   }
+  if (settings && settings.animateEmotes === false) freezeEmotesIn(div);
+  feedEl.appendChild(div);
 
+  while (feedEl.children.length > MAX_LINES) {
+    feedEl.removeChild(feedEl.firstChild);
+  }
+}
+
+function flushPendingLines() {
+  while (pendingLines.length && pendingLines[0].ready) {
+    insertLine(pendingLines.shift().div);
+  }
+}
+
+// `meta` (chat lines only) records who/what a line came from – platform,
+// message id, user id and name(s) – so it can be taken back out of the feed if
+// the message is later deleted or its author is banned/timed out.
+function addLine(type, html, meta) {
   const div = document.createElement('div');
   div.className = `line ${type}`;
   div.dataset.ts = Date.now(); // used by clearFeed()'s new-message grace period
@@ -112,12 +137,31 @@ function addLine(type, html, meta) {
     if (names.length) div.dataset.names = names.join('|');
   }
   div.innerHTML = html;
-  if (settings && settings.animateEmotes === false) freezeEmotesIn(div);
-  feedEl.appendChild(div);
 
-  while (feedEl.children.length > MAX_LINES) {
-    feedEl.removeChild(feedEl.firstChild);
+  // Emotes that are already loaded (seen before) need no waiting.
+  const waiting = Array.from(div.querySelectorAll('img.kick-emote, img.twitch-emote'))
+    .filter((img) => !(img.complete && img.naturalWidth));
+
+  if (!pendingLines.length && !waiting.length) {
+    insertLine(div);
+    return;
   }
+
+  const entry = { div, ready: waiting.length === 0 };
+  pendingLines.push(entry);
+  if (entry.ready) return; // queued behind an earlier held line
+
+  let timer = null;
+  const done = () => {
+    if (entry.ready) return;
+    entry.ready = true;
+    clearTimeout(timer);
+    flushPendingLines();
+  };
+  timer = setTimeout(done, EMOTE_HOLD_MS);
+  // decode() resolves once the image is fetched and decoded, and rejects if it
+  // fails to load – either way the line should go ahead.
+  Promise.all(waiting.map((img) => img.decode().catch(() => {}))).then(done);
 }
 
 // Takes chat lines back out of the feed after a moderation action on that
@@ -127,15 +171,22 @@ function addLine(type, html, meta) {
 // alerts stay put.
 function removeChatLines(plat, { msgId, userId, names } = {}) {
   const wantedNames = (names || []).filter(Boolean).map((n) => String(n).toLowerCase());
-  Array.from(feedEl.children).forEach((el) => {
-    if (!el.classList.contains('chat') || el.dataset.plat !== plat) return;
+  const matches = (el) => {
+    if (!el.classList.contains('chat') || el.dataset.plat !== plat) return false;
     const lineNames = el.dataset.names ? el.dataset.names.split('|') : [];
-    const hit =
+    return (
       (msgId != null && msgId !== '' && el.dataset.msg === String(msgId)) ||
       (userId != null && userId !== '' && el.dataset.user === String(userId)) ||
-      (wantedNames.length > 0 && lineNames.some((n) => wantedNames.includes(n)));
-    if (hit) feedEl.removeChild(el);
+      (wantedNames.length > 0 && lineNames.some((n) => wantedNames.includes(n)))
+    );
+  };
+  Array.from(feedEl.children).forEach((el) => {
+    if (matches(el)) feedEl.removeChild(el);
   });
+  // A line still waiting for its emotes hasn't reached the feed yet.
+  const before = pendingLines.length;
+  pendingLines = pendingLines.filter((p) => !matches(p.div));
+  if (pendingLines.length !== before) flushPendingLines();
 }
 
 // Clearing the feed spares any line that arrived more recently than the
@@ -150,6 +201,8 @@ function clearFeed() {
     const ts = Number(el.dataset.ts || 0);
     if (ts < cutoff) feedEl.removeChild(el);
   });
+  pendingLines = pendingLines.filter((p) => Number(p.div.dataset.ts || 0) >= cutoff);
+  flushPendingLines();
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +213,7 @@ function applyAppearance(s) {
   document.documentElement.style.setProperty('--font-size', `${s.fontSize}px`);
   document.documentElement.style.setProperty('--bg-opacity', s.bgOpacity);
   document.documentElement.style.setProperty('--drag-bar-opacity', s.dragBarOpacity != null ? s.dragBarOpacity : 0.35);
+  document.body.classList.toggle('rise-on', s.riseAnimation === true);
 }
 
 function populateSettingsForm(s) {
@@ -171,6 +225,7 @@ function populateSettingsForm(s) {
   document.getElementById('chk-twitch-platform-color').checked = !!s.twitchForcePlatformColor;
   document.getElementById('in-max-badges').value = s.maxBadges != null ? s.maxBadges : 3;
   document.getElementById('chk-animate-emotes').checked = s.animateEmotes !== false;
+  document.getElementById('chk-rise-animation').checked = s.riseAnimation === true;
   document.getElementById('in-streamlabs-token').value = s.streamlabsToken || '';
   document.getElementById('chk-chat').checked = !!s.showChat;
   document.getElementById('chk-follows').checked = !!s.showFollows;
@@ -627,7 +682,7 @@ function renderTwitchChatContent(message, emotesTag) {
     if (from < lastIndex) return; // overlapping data guard
     out += escapeHtml(text.slice(lastIndex, from));
     const name = text.slice(from, to);
-    out += `<img class="twitch-emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/default/dark/2.0" alt=":${escapeHtml(name)}:" title="${escapeHtml(name)}" loading="lazy" decoding="async" />`;
+    out += `<img class="twitch-emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/default/dark/2.0" alt=":${escapeHtml(name)}:" title="${escapeHtml(name)}" decoding="async" />`;
     lastIndex = to;
   });
   out += escapeHtml(text.slice(lastIndex));
@@ -2730,6 +2785,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     twitchForcePlatformColor: document.getElementById('chk-twitch-platform-color').checked,
     maxBadges: Math.max(0, Math.min(10, Number(document.getElementById('in-max-badges').value) || 0)),
     animateEmotes: document.getElementById('chk-animate-emotes').checked,
+    riseAnimation: document.getElementById('chk-rise-animation').checked,
     streamlabsToken: document.getElementById('in-streamlabs-token').value.trim(),
     showChat: document.getElementById('chk-chat').checked,
     showFollows: document.getElementById('chk-follows').checked,
