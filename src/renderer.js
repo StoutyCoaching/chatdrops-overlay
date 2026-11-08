@@ -288,6 +288,7 @@ function populateSettingsForm(s) {
   document.getElementById('chk-rate-xno').checked = !!s.showRateXno;
   document.getElementById('chk-keep-on-top').checked = s.keepOnTop !== false;
   document.getElementById('chk-igpu').checked = s.useIntegratedGpu !== false;
+  document.getElementById('chk-software-render').checked = !!s.softwareRendering;
   renderResizeKeyButtons();
   document.getElementById('in-drop-decimals').value = s.dropDecimals != null ? s.dropDecimals : 4;
   document.getElementById('in-xno-decimals').value = s.xnoDecimals != null ? s.xnoDecimals : 2;
@@ -936,13 +937,15 @@ function renderViewerChips() {
   const showTwitch = twitchLive || (!anyLive && !showKick);
 
   const fill = (platform, chip, live, viewers) => {
-    document.getElementById(`${chip.id}-value`).textContent =
-      live ? (viewers != null ? fmtViewers(viewers) : '–') : 'offline';
+    const valEl = document.getElementById(`${chip.id}-value`);
+    const valText = live ? (viewers != null ? fmtViewers(viewers) : '–') : 'offline';
+    if (valEl.textContent !== valText) valEl.textContent = valText;
     const ndEl = document.getElementById(`${chip.id}-nd`);
     if (!ndEl) return;
     const ndViewers = live && settings.showNanodrops ? ndWatchersByPlatform[platform] : null;
     if (ndViewers != null) {
-      ndEl.textContent = `/${fmtViewers(ndViewers)}`;
+      const ndText = `/${fmtViewers(ndViewers)}`;
+      if (ndEl.textContent !== ndText) ndEl.textContent = ndText;
       ndEl.classList.remove('hidden');
     } else {
       ndEl.classList.add('hidden');
@@ -1001,9 +1004,10 @@ function tickClockAndUptime() {
     // Hover the uptime to see exactly what the live platform sent us and how
     // we read it - the quickest way to tell a platform-side start-time issue
     // apart from a parsing bug on our end.
-    uptimeEl.title = start
+    const uptimeTitle = start
       ? `${name} sent: ${raw}\nRead as (UTC): ${start.toISOString()}\nYour local time: ${start.toString()}`
       : '';
+    if (uptimeEl.title !== uptimeTitle) uptimeEl.title = uptimeTitle;
   });
 }
 
@@ -1522,7 +1526,12 @@ function setNanodropsStat(id, hasValue, text) {
     chip.classList.add('hidden');
     return;
   }
-  valueEl.innerHTML = text;
+  // Skip the write when nothing changed: re-assigning identical markup still
+  // makes Chromium restyle, relayout and repaint the (transparent, topmost) window.
+  if (valueEl._lastHtml !== text) {
+    valueEl.innerHTML = text;
+    valueEl._lastHtml = text;
+  }
   chip.classList.remove('hidden');
 }
 
@@ -1793,7 +1802,9 @@ function setDragFaucetStat(platform, balanceXno) {
     chip.classList.add('hidden');
     return;
   }
-  document.getElementById(`drag-nd-faucet-${platform}-amount`).innerHTML = fmtXno(balanceXno);
+  const amtEl = document.getElementById(`drag-nd-faucet-${platform}-amount`);
+  const amtHtml = fmtXno(balanceXno);
+  if (amtEl._lastHtml !== amtHtml) { amtEl.innerHTML = amtHtml; amtEl._lastHtml = amtHtml; }
   chip.classList.remove('hidden');
 }
 
@@ -1807,8 +1818,10 @@ function handleNanodropsPool(balanceXno, viewers) {
     chip.classList.add('hidden');
     return;
   }
-  balanceEl.innerHTML = fmtXno(balanceXno);
-  viewersEl.textContent = viewers != null ? String(viewers) : '–';
+  const balHtml = fmtXno(balanceXno);
+  if (balanceEl._lastHtml !== balHtml) { balanceEl.innerHTML = balHtml; balanceEl._lastHtml = balHtml; }
+  const vText = viewers != null ? String(viewers) : '–';
+  if (viewersEl.textContent !== vText) viewersEl.textContent = vText;
   chip.classList.remove('hidden');
 }
 
@@ -2853,6 +2866,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     showRateXno: document.getElementById('chk-rate-xno').checked,
     keepOnTop: document.getElementById('chk-keep-on-top').checked,
     useIntegratedGpu: document.getElementById('chk-igpu').checked,
+    softwareRendering: document.getElementById('chk-software-render').checked,
     dropDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-drop-decimals').value) || 0)),
     xnoDecimals: Math.max(0, Math.min(8, Number(document.getElementById('in-xno-decimals').value) || 0)),
     obsEnabled: document.getElementById('chk-obs').checked,

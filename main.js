@@ -49,6 +49,7 @@ const store = new Store({
     showRateXno: false,
     keepOnTop: true,
     useIntegratedGpu: true,
+    softwareRendering: false,
     dropDecimals: 4,
     xnoDecimals: 2,
     obsEnabled: false,
@@ -146,6 +147,13 @@ if (gotSingleInstanceLock && store.get('useIntegratedGpu') && applyIntegratedGpu
   app.relaunch();
   app.exit(0);
 }
+
+// Software rendering: run Chromium without its GPU process, so the overlay's
+// drawing never competes with the game for the graphics card. Text/stat panels
+// are cheap on the CPU. Chromium reads this switch at startup, so changing the
+// setting restarts the overlay (see 'set-settings').
+const softwareRenderingAtLaunch = !!store.get('softwareRendering');
+if (softwareRenderingAtLaunch) app.commandLine.appendSwitch('disable-gpu');
 
 // Chromium builds (and keeps updating) an accessibility tree whenever any
 // Windows tool says it's listening, and every new chat line then costs extra
@@ -1362,6 +1370,7 @@ ipcMain.handle('renderer-ready', () => {
   });
 });
 
+let restartingForRendering = false;
 ipcMain.handle('set-settings', (event, patch) => {
   const tokenChanged = 'streamlabsToken' in patch && patch.streamlabsToken !== store.get('streamlabsToken');
   store.set(patch);
@@ -1369,6 +1378,15 @@ ipcMain.handle('set-settings', (event, patch) => {
   if ('keepOnTop' in patch) applyKeepOnTop(!!patch.keepOnTop);
   if ('resizeMode' in patch || 'resizeKeys' in patch) refreshResizeConfig();
   if ('useIntegratedGpu' in patch) applyIntegratedGpuPreference(!!patch.useIntegratedGpu);
+  if ('softwareRendering' in patch && !!patch.softwareRendering !== softwareRenderingAtLaunch && !restartingForRendering) {
+    restartingForRendering = true;
+    // Let the settings reply reach the panel first, then restart with the new switch.
+    setTimeout(() => {
+      app.releaseSingleInstanceLock();
+      app.relaunch();
+      app.quit();
+    }, 400);
+  }
   if ('nanodropsFaucetId' in patch || 'nanodropsFaucetId2' in patch || 'showNanodrops' in patch) {
     pruneNanodropsState();
     pollNanodrops({ force: true });
