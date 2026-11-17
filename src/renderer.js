@@ -251,10 +251,23 @@ function clearFeed() {
 // Settings: load, apply, save
 // ---------------------------------------------------------------------------
 
+// With software (CPU) rendering the window is a per-pixel-alpha layered window,
+// and Windows treats fully transparent (alpha 0) pixels as click-through - so a
+// drag bar at 0% opacity stops registering mouse input. Keep a 1% floor in that
+// mode so the bar can still be grabbed. Reflects the mode the overlay launched
+// with (it restarts when that setting changes).
+let softwareRenderingActive = false;
+function effectiveDragBarOpacity(v) {
+  const n = Number(v);
+  const val = Number.isFinite(n) ? n : 0.35;
+  return softwareRenderingActive ? Math.max(val, 0.01) : val;
+}
+
 function applyAppearance(s) {
+  softwareRenderingActive = !!s.softwareRendering;
   document.documentElement.style.setProperty('--font-size', `${s.fontSize}px`);
   document.documentElement.style.setProperty('--bg-opacity', s.bgOpacity);
-  document.documentElement.style.setProperty('--drag-bar-opacity', s.dragBarOpacity != null ? s.dragBarOpacity : 0.35);
+  document.documentElement.style.setProperty('--drag-bar-opacity', effectiveDragBarOpacity(s.dragBarOpacity != null ? s.dragBarOpacity : 0.35));
   document.body.classList.toggle('rise-on', s.riseAnimation === true);
 }
 
@@ -2811,7 +2824,7 @@ function updateResizeSpeedLabels() {
   document.getElementById(id).addEventListener('input', updateResizeSpeedLabels));
 
 document.getElementById('in-drag-bar-opacity').addEventListener('input', (e) => {
-  document.documentElement.style.setProperty('--drag-bar-opacity', e.target.value);
+  document.documentElement.style.setProperty('--drag-bar-opacity', effectiveDragBarOpacity(e.target.value));
 });
 
 // Accepts what people actually paste into the channel boxes – "kick.com/name",
