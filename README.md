@@ -47,7 +47,7 @@ Then continue with **First-time setup** above.
 - **OBS** — optional WebSocket connection for mic/desktop mute icons and a mic level meter; needs host, port, password, and the exact source names from your OBS scene.
 - **Show in feed** — per-type toggles: chat, follows, subs, gifted subs, tips, bits, raids, live viewer count, Kick live timer, Twitch live timer, nanodrops stats.
 - **nanodrops** — one or two faucet IDs, and decimal places for the drop ticker vs. balance/JUICED alerts.
-- **Shortcuts** — rebind the lock and clear-chat hotkeys, and set the new-message grace period (how recent a chat line must be to survive a manual clear).
+- **Shortcuts** — rebind the lock and clear-chat hotkeys, optionally bind keys that type Ӿ (Nano symbol) or – (en dash; both unbound by default), and set the new-message grace period (how recent a chat line must be to survive a manual clear).
 - **Appearance** — text size, background opacity, top bar opacity.
 
 ## Hotkeys

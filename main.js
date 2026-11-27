@@ -64,6 +64,8 @@ const store = new Store({
     bookmarkShortcut: 'F22',
     toggleVisibilityShortcut: 'F23',
     resizeModeShortcut: 'F24',
+    nanoSymbolShortcut: '', // blank = unbound; types the Nano symbol
+    enDashShortcut: '',     // blank = unbound; types an en dash
     bookmarksFolder: null,
     clearChatGraceMs: 3000,
     windowBounds: { x: undefined, y: undefined, width: 480, height: 640 },
@@ -865,11 +867,29 @@ let GetAsyncKeyState = null;
 let winGetWindow = null;
 let winIsWindowVisible = null;
 let winSetWindowPos = null;
+let winSendInput = null;
+let INPUT_SIZE = 0;
 if (process.platform === 'win32') {
   try {
     const koffi = require('koffi');
     const user32 = koffi.load('user32.dll');
     GetAsyncKeyState = user32.func('int16_t __stdcall GetAsyncKeyState(int vKey)');
+    try {
+      // SendInput, used by the "type a symbol" binds below.
+      const MOUSEINPUT = koffi.struct('MOUSEINPUT', {
+        dx: 'int32', dy: 'int32', mouseData: 'uint32', dwFlags: 'uint32', time: 'uint32', dwExtraInfo: 'uintptr_t'
+      });
+      const KEYBDINPUT = koffi.struct('KEYBDINPUT', {
+        wVk: 'uint16', wScan: 'uint16', dwFlags: 'uint32', time: 'uint32', dwExtraInfo: 'uintptr_t'
+      });
+      const INPUT_UNION = koffi.union('INPUT_UNION', { mi: MOUSEINPUT, ki: KEYBDINPUT });
+      const INPUT = koffi.struct('INPUT', { type: 'uint32', u: INPUT_UNION });
+      INPUT_SIZE = koffi.sizeof(INPUT);
+      winSendInput = user32.func('uint32 __stdcall SendInput(uint32 cInputs, INPUT *pInputs, int cbSize)');
+    } catch (err) {
+      winSendInput = null;
+      console.warn('[shortcut] SendInput unavailable, symbol binds will do nothing:', err && err.message);
+    }
     try {
       winGetWindow = user32.func('intptr_t __stdcall GetWindow(intptr_t hWnd, uint32_t uCmd)');
       winIsWindowVisible = user32.func('int __stdcall IsWindowVisible(intptr_t hWnd)');
@@ -1081,6 +1101,47 @@ function applyResizeModeShortcut(accelerator) {
   if (!result.ok) return result;
   releaseShortcut(currentResizeModeAccelerator);
   currentResizeModeAccelerator = accelerator;
+  return result;
+}
+
+// ---- "Type a symbol" binds ----
+// Pressing the bind types a fixed character into whatever window has focus.
+// Uses SendInput with KEYEVENTF_UNICODE, so it works on any keyboard layout and
+// doesn't depend on the symbol having a key. Both binds are blank by default.
+const NANO_SYMBOL = '\u04FE'; // Ӿ
+const EN_DASH = '\u2013';     // –
+const typeBinds = { nanoSymbol: { current: null }, enDash: { current: null } };
+
+function typeText(text) {
+  if (!winSendInput) return;
+  const KEYEVENTF_KEYUP = 0x0002;
+  const KEYEVENTF_UNICODE = 0x0004;
+  const inputs = [];
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    inputs.push({ type: 1, u: { ki: { wVk: 0, wScan: code, dwFlags: KEYEVENTF_UNICODE, time: 0, dwExtraInfo: 0 } } });
+    inputs.push({ type: 1, u: { ki: { wVk: 0, wScan: code, dwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0 } } });
+  }
+  try {
+    winSendInput(inputs.length, inputs, INPUT_SIZE);
+  } catch (err) {
+    console.warn('[shortcut] typing failed:', err && err.message);
+  }
+}
+
+// Same register-then-swap approach. An empty accelerator means "unbound".
+function applyTypeShortcut(slotName, accelerator, text) {
+  const slot = typeBinds[slotName];
+  if (!accelerator) {
+    releaseShortcut(slot.current);
+    slot.current = null;
+    return { ok: true, invalid: false };
+  }
+  if (slot.current === accelerator) return { ok: true, invalid: false };
+  const result = tryRegisterShortcut(accelerator, () => typeText(text));
+  if (!result.ok) return result;
+  releaseShortcut(slot.current);
+  slot.current = accelerator;
   return result;
 }
 
@@ -1319,6 +1380,9 @@ app.whenReady().then(() => {
   if (!applyResizeModeShortcut(store.get('resizeModeShortcut')).ok) {
     applyResizeModeShortcut('F24');
   }
+  // Blank by default; no fallback - if a saved bind can't be registered it stays unbound.
+  applyTypeShortcut('nanoSymbol', store.get('nanoSymbolShortcut'), NANO_SYMBOL);
+  applyTypeShortcut('enDash', store.get('enDashShortcut'), EN_DASH);
   // (DevTools' Ctrl+Shift+I is handled per-window in createWindow() – it used
   // to be a *global* shortcut here, which stole that combo from every other
   // app on the machine, including DevTools in Chrome, Edge and Discord.)
@@ -1433,6 +1497,18 @@ ipcMain.handle('set-resize-mode-shortcut', (event, accelerator) => {
   const { ok, invalid } = applyResizeModeShortcut(accelerator);
   if (ok) store.set('resizeModeShortcut', accelerator);
   return { ok, invalid, accelerator: currentResizeModeAccelerator };
+});
+
+ipcMain.handle('set-nano-symbol-shortcut', (event, accelerator) => {
+  const { ok, invalid } = applyTypeShortcut('nanoSymbol', accelerator, NANO_SYMBOL);
+  if (ok) store.set('nanoSymbolShortcut', accelerator || '');
+  return { ok, invalid, accelerator: typeBinds.nanoSymbol.current || '' };
+});
+
+ipcMain.handle('set-en-dash-shortcut', (event, accelerator) => {
+  const { ok, invalid } = applyTypeShortcut('enDash', accelerator, EN_DASH);
+  if (ok) store.set('enDashShortcut', accelerator || '');
+  return { ok, invalid, accelerator: typeBinds.enDash.current || '' };
 });
 
 ipcMain.handle('choose-bookmark-folder', async () => {

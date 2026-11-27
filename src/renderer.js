@@ -325,6 +325,10 @@ function populateSettingsForm(s) {
   document.getElementById('toggle-visibility-shortcut-status').textContent = '';
   document.getElementById('btn-rebind-resize-mode').textContent = s.resizeModeShortcut || 'F24';
   document.getElementById('resize-mode-shortcut-status').textContent = '';
+  document.getElementById('btn-rebind-nano-symbol').textContent = s.nanoSymbolShortcut || 'Not set';
+  document.getElementById('nano-symbol-shortcut-status').textContent = '';
+  document.getElementById('btn-rebind-en-dash').textContent = s.enDashShortcut || 'Not set';
+  document.getElementById('en-dash-shortcut-status').textContent = '';
   document.getElementById('bookmark-folder-path').textContent = s.bookmarksFolder || 'Not set - bookmarks won\'t be saved until you choose a folder.';
   document.getElementById('in-resize-speed-min').value = s.resizeSpeedMin != null ? s.resizeSpeedMin : 40;
   document.getElementById('in-resize-speed-max').value = s.resizeSpeedMax != null ? s.resizeSpeedMax : 320;
@@ -2735,6 +2739,101 @@ resizeModeRebindBtn.addEventListener('keydown', async (e) => {
 resizeModeRebindBtn.addEventListener('blur', () => {
   if (capturingResizeModeShortcut) stopResizeModeCapture(settings.resizeModeShortcut || 'F24');
 });
+
+// ---------------------------------------------------------------------------
+// "Type a symbol" shortcut rebinding. Blank by default; Backspace / Delete
+// clears the bind, Esc cancels.
+// ---------------------------------------------------------------------------
+
+function setupTypeSymbolRebind(btnId, statusId, settingKey, apply) {
+  const btn = document.getElementById(btnId);
+  let capturing = false;
+
+  function setStatus(text, cls) {
+    const el = document.getElementById(statusId);
+    if (el) {
+      el.textContent = text;
+      el.className = `status ${cls || ''}`.trim();
+    }
+  }
+
+  function stop(displayText) {
+    capturing = false;
+    btn.classList.remove('capturing');
+    btn.textContent = displayText || 'Not set';
+  }
+
+  btn.addEventListener('click', () => {
+    if (capturing) return;
+    capturing = true;
+    btn.textContent = 'Press a key…';
+    btn.classList.add('capturing');
+    setStatus('');
+  });
+
+  btn.addEventListener('keydown', async (e) => {
+    if (!capturing) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const fallback = settings[settingKey] || '';
+
+    if (e.key === 'Escape') {
+      stop(fallback);
+      return;
+    }
+
+    if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+      let res;
+      try { res = await apply(''); } catch (err) { res = { ok: false }; }
+      if (res.ok) {
+        settings[settingKey] = '';
+        stop('');
+        setStatus('Cleared.', 'ok');
+      } else {
+        stop(fallback);
+      }
+      return;
+    }
+
+    const result = captureKeyToAccelerator(e);
+    if (result.pending) return;
+    if (result.error) {
+      setStatus(result.error, 'err');
+      return;
+    }
+
+    btn.textContent = result.accelerator;
+    let res;
+    try {
+      res = await apply(result.accelerator);
+    } catch (err) {
+      res = { ok: false, invalid: true };
+    }
+    if (res.ok) {
+      settings[settingKey] = res.accelerator;
+      stop(res.accelerator);
+      setStatus('Saved.', 'ok');
+    } else {
+      stop(res.accelerator || fallback);
+      setStatus(
+        res.invalid
+          ? `${result.accelerator} isn't a key combination that can be used as a shortcut.`
+          : `Could not bind ${result.accelerator} – already in use by something else.`,
+        'err'
+      );
+    }
+  });
+
+  btn.addEventListener('blur', () => {
+    if (capturing) stop(settings[settingKey] || '');
+  });
+}
+
+setupTypeSymbolRebind('btn-rebind-nano-symbol', 'nano-symbol-shortcut-status', 'nanoSymbolShortcut',
+  (acc) => overlay.setNanoSymbolShortcut(acc));
+setupTypeSymbolRebind('btn-rebind-en-dash', 'en-dash-shortcut-status', 'enDashShortcut',
+  (acc) => overlay.setEnDashShortcut(acc));
 
 document.getElementById('btn-choose-bookmark-folder').addEventListener('click', async () => {
   const folder = await overlay.chooseBookmarkFolder();
