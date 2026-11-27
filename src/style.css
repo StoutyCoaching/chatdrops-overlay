@@ -63,6 +63,14 @@ body.resize-mode::after {
   border-color: rgba(77, 163, 255, 0.8);
 }
 
+/* Software (CPU) rendering: transparent pixels are click-through, so the thin
+   outline is hard to grab for resizing. Make it a thicker band (still
+   pointer-events: none, so it doesn't affect layout or clicks). */
+body.software-render.window-focused::after,
+body.software-render.resize-mode::after {
+  border-width: 8px;
+}
+
 /* ---------- drag strip ---------- */
 
 #drag-strip {

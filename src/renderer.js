@@ -269,6 +269,7 @@ function applyAppearance(s) {
   document.documentElement.style.setProperty('--bg-opacity', s.bgOpacity);
   document.documentElement.style.setProperty('--drag-bar-opacity', effectiveDragBarOpacity(s.dragBarOpacity != null ? s.dragBarOpacity : 0.35));
   document.body.classList.toggle('rise-on', s.riseAnimation === true);
+  document.body.classList.toggle('software-render', !!s.softwareRendering);
 }
 
 function populateSettingsForm(s) {
